@@ -1,0 +1,10 @@
+{
+  "name": "prompt-optimization",
+  "description": "Improve prompts for clarity, constraints, and reproducibility",
+  "steps": [
+    "Clarify objectives and success criteria",
+    "Constrain outputs with formats and examples",
+    "Add context and assumptions explicitly",
+    "Iterate based on observed outputs"
+  ]
+}

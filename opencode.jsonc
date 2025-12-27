@@ -1,0 +1,149 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["policies/**/*.md", "instructions/AGENTS.md"],
+  "default_agent": "core",
+  // Use um modelo mais barato para tarefas leves como geracao de titulos
+  "small_model": "litellm/gemini-2.0-flash-lite",
+  // Configuracoes de compactacao de contexto
+  "compaction": {
+    "auto": true,
+    "prune": true,
+  },
+  // Ignorar diretorios ruidosos no watcher
+  "watcher": {
+    "ignore": ["node_modules/**", "dist/**", ".git/**", "*.log"],
+  },
+  "agent": {
+    // Desabilitar agentes built-in para evitar confusao com Core
+    "build": {
+      "disable": true,
+    },
+    "plan": {
+      "disable": true,
+    },
+    // Core - Orquestrador principal
+    "core": {
+      "steps": 50,
+      "color": "#6366F1",
+      "permission": {
+        "task": {
+          "*": "allow",
+          "general": "allow",
+          "explore": "allow",
+        },
+        "skill": {
+          "*": "allow",
+        },
+        "bash": {
+          "*": "ask",
+          "git status*": "allow",
+          "git log*": "allow",
+          "git diff*": "allow",
+          "git branch*": "allow",
+          "ls*": "allow",
+          "cat*": "allow",
+          "npm test*": "allow",
+          "npm run*": "ask",
+          "bun test*": "allow",
+          "bun run*": "ask",
+        },
+        "edit": "allow",
+        "read": "allow",
+        "webfetch": "allow",
+        "todowrite": "allow",
+        "todoread": "allow",
+      },
+    },
+    // Subagentes especializados
+    "architect": {
+      "color": "#8B5CF6",
+      "permission": {
+        "skill": {
+          "*": "allow",
+        },
+      },
+    },
+    "engineer": {
+      "color": "#10B981",
+      "permission": {
+        "skill": {
+          "*": "allow",
+        },
+      },
+    },
+    "tester": {
+      "color": "#F59E0B",
+      "permission": {
+        "skill": {
+          "*": "allow",
+        },
+      },
+    },
+    "sre": {
+      "color": "#EF4444",
+      "permission": {
+        "skill": {
+          "*": "allow",
+        },
+      },
+    },
+  },
+  "mcp": {
+    "atlassian": {
+      "type": "remote",
+      "url": "https://mcp.atlassian.com/v1/mcp",
+      "enabled": true,
+    },
+    "github": {
+      "type": "remote",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer {env:GITHUB_PAT_TOKEN}",
+      },
+    },
+    "outline": {
+      "type": "remote",
+      "url": "http://localhost:4000/mcp",
+      "enabled": true,
+    },
+  },
+  "provider": {
+    "litellm": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LiteLLM",
+      "options": {
+        "baseURL": "{env:LLM_PROXY_URL}",
+      },
+      "models": {
+        "gemini-2.5-pro": {
+          "name": "Gemini 2.5 Pro",
+        },
+        "gpt-4o-mini": {
+          "name": "GPT 4o Mini",
+        },
+        "gemini-2.5-flash": {
+          "name": "Gemini 2.5 Flash",
+        },
+        "gpt-4.1-mini": {
+          "name": "GPT 4.1 Mini",
+        },
+        "gemini-2.0-flash": {
+          "name": "Gemini 2.0 Flash",
+        },
+        "gpt-5-mini": {
+          "name": "GPT 5 Mini",
+        },
+        "gemini-2.0-flash-lite": {
+          "name": "Gemini 2.0 Flash Lite",
+        },
+        "gpt-4.1-nano": {
+          "name": "GPT 4.1 Nano",
+        },
+        "gpt-5": {
+          "name": "GPT 5",
+        },
+      },
+    },
+  },
+}

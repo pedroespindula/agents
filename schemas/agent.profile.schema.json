@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Profile",
+  "type": "object",
+  "required": ["name", "capabilities", "policies", "instructions"],
+  "properties": {
+    "name": { "type": "string", "minLength": 2 },
+    "capabilities": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "policies": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "instructions": { "type": "string" },
+    "tools": { "type": "array", "items": { "type": "string" } },
+    "templates": { "type": "object" },
+    "validation": { "type": "object" }
+  }
+}

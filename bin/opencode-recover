@@ -1,0 +1,299 @@
+#!/bin/bash
+#
+# opencode-recover - Recupera mensagens de sessões do OpenCode
+#
+# Uso: opencode-recover [opções] <trecho-do-texto | session-id>
+#
+
+set -euo pipefail
+
+STORAGE_DIR="$HOME/.local/share/opencode/storage"
+PART_DIR="$STORAGE_DIR/part"
+SESSION_DIR="$STORAGE_DIR/session"
+MESSAGE_DIR="$STORAGE_DIR/message"
+
+# Cores (podem ser desabilitadas com --raw)
+RAW_MODE=false
+
+setup_colors() {
+  if [[ "$RAW_MODE" == true ]]; then
+    RED='' GREEN='' BLUE='' YELLOW='' CYAN='' NC=''
+  else
+    RED='\033[0;31m' GREEN='\033[0;32m' BLUE='\033[0;34m'
+    YELLOW='\033[1;33m' CYAN='\033[0;36m' NC='\033[0m'
+  fi
+}
+
+usage() {
+  cat <<EOF
+Uso: opencode-recover [opções] <trecho-do-texto | session-id>
+
+Busca mensagens do OpenCode que contenham o trecho especificado
+ou recupera mensagens de uma sessão específica pelo ID.
+
+Opções:
+  -s, --session   Trata o argumento como ID de sessão (em vez de busca por texto)
+  -l, --list      Lista apenas as sessões encontradas (sem mostrar mensagens)
+  -a, --all       Mostra todas as mensagens de todas as sessões encontradas
+  -u, --user      Mostra apenas mensagens do usuário
+  -t, --assistant Mostra apenas mensagens do assistente
+  -r, --raw       Remove cores do output (útil para redirecionar para arquivo)
+  -h, --help      Mostra esta ajuda
+
+Exemplos:
+  opencode-recover "README.md"                       # Busca por trecho
+  opencode-recover -s ses_439806ec8ffe7J6ExbqH5Um6Hg # Busca por sessão
+  opencode-recover -u "meu prompt"                   # Apenas mensagens do usuário
+  opencode-recover -t -s ses_xxx                     # Apenas respostas do assistente
+  opencode-recover -r "texto" > output.txt           # Salvar em arquivo sem cores
+EOF
+  exit 1
+}
+
+check_deps() {
+  if ! command -v jq &>/dev/null; then
+    echo -e "${RED}Erro: jq não está instalado. Instale com: brew install jq${NC}"
+    exit 1
+  fi
+}
+
+# Busca sessões que contêm o trecho (otimizado com grep -h e jq slurp)
+find_sessions() {
+  local search="$1"
+  grep -r "$search" "$PART_DIR" -l 2>/dev/null |
+    xargs -P4 -I{} jq -r '.sessionID // empty' {} 2>/dev/null |
+    sort -u
+}
+
+# Verifica se uma sessão existe
+session_exists() {
+  local session_id="$1"
+  [[ -n $(find "$SESSION_DIR" -name "${session_id}.json" -print -quit 2>/dev/null) ]]
+}
+
+# Obtém info da sessão
+get_session_info() {
+  local session_id="$1"
+  local session_file=$(find "$SESSION_DIR" -name "${session_id}.json" -print -quit 2>/dev/null)
+  [[ -n "$session_file" && -f "$session_file" ]] && cat "$session_file"
+}
+
+# Lista todas as mensagens de uma sessão - OTIMIZADO
+# Usa o diretório message/<session_id>/ diretamente em vez de buscar em todo part/
+get_session_messages() {
+  local session_id="$1"
+  local msg_dir="$MESSAGE_DIR/$session_id"
+
+  if [[ -d "$msg_dir" ]]; then
+    # Pega os message IDs do diretório de mensagens da sessão
+    ls -1 "$msg_dir" 2>/dev/null | sed 's/\.json$//' | while read -r msg_id; do
+      local part_dir="$PART_DIR/$msg_id"
+      if [[ -d "$part_dir" ]]; then
+        ls -1 "$part_dir"/*.json 2>/dev/null
+      fi
+    done
+  fi
+}
+
+# Obtém o role de uma mensagem - OTIMIZADO
+# Busca diretamente no diretório da sessão
+get_message_role() {
+  local part_file="$1"
+  local msg_id=$(basename "$(dirname "$part_file")")
+
+  # Busca o arquivo de mensagem em qualquer sessão
+  local msg_file=$(find "$MESSAGE_DIR" -name "${msg_id}.json" -print -quit 2>/dev/null)
+  if [[ -n "$msg_file" && -f "$msg_file" ]]; then
+    jq -r '.role // "unknown"' "$msg_file" 2>/dev/null
+  else
+    echo "unknown"
+  fi
+}
+
+# Exibe uma mensagem formatada - OTIMIZADO
+display_message() {
+  local file="$1"
+  local search="$2"
+  local filter_role="$3"
+  local msg_role="$4"
+
+  # Filtra por role se especificado
+  [[ -n "$filter_role" && "$msg_role" != "$filter_role" ]] && return
+
+  local text=$(jq -r '.text // empty' "$file" 2>/dev/null)
+  [[ -z "$text" ]] && return
+
+  # Cor baseada no role
+  local role_color=$NC role_label="[UNKNOWN]"
+  case "$msg_role" in
+  user)
+    role_color=$GREEN
+    role_label="[USER]"
+    ;;
+  assistant)
+    role_color=$BLUE
+    role_label="[ASSISTANT]"
+    ;;
+  esac
+
+  echo -e "${role_color}${role_label}${NC}"
+
+  # Destaca o trecho buscado se existir
+  if [[ -n "$search" && "$RAW_MODE" == false ]] && grep -q "$search" <<<"$text" 2>/dev/null; then
+    GREP_COLOR='1;33' grep --color=always -E "$search|$" <<<"$text"
+  else
+    echo "$text"
+  fi
+  echo -e "\n${CYAN}---${NC}\n"
+}
+
+# Exibe informações de uma sessão
+display_session_info() {
+  local session_id="$1"
+  local session_info=$(get_session_info "$session_id")
+
+  echo -e "${YELLOW}════════════════════════════════════════════════════════════${NC}"
+  echo -e "${CYAN}Sessão:${NC} $session_id"
+
+  if [[ -z "$session_info" ]]; then
+    echo -e "${RED}(Metadados da sessão não encontrados)${NC}"
+  else
+    local title directory created date_str=""
+    title=$(jq -r '.title // "Sem título"' <<<"$session_info")
+    directory=$(jq -r '.directory // "?"' <<<"$session_info")
+    created=$(jq -r '.time.created // 0' <<<"$session_info")
+
+    [[ "$created" != "0" && "$created" != "null" ]] &&
+      date_str=$(date -r $((created / 1000)) "+%Y-%m-%d %H:%M" 2>/dev/null || true)
+
+    echo -e "${CYAN}Título:${NC} $title"
+    echo -e "${CYAN}Diretório:${NC} $directory"
+    [[ -n "$date_str" ]] && echo -e "${CYAN}Data:${NC} $date_str"
+  fi
+  echo -e "${YELLOW}════════════════════════════════════════════════════════════${NC}\n"
+}
+
+# Processa uma sessão - OTIMIZADO
+process_session() {
+  local session_id="$1"
+  local search="$2"
+  local list_only="$3"
+  local filter_role="$4"
+
+  display_session_info "$session_id"
+  [[ "$list_only" == true ]] && return
+
+  local msg_dir="$MESSAGE_DIR/$session_id"
+
+  if [[ ! -d "$msg_dir" ]]; then
+    echo -e "${RED}Nenhuma mensagem encontrada.${NC}"
+    return
+  fi
+
+  # Processa mensagens ordenadas por nome (contém timestamp)
+  for msg_file in $(ls -1 "$msg_dir"/*.json 2>/dev/null | sort); do
+    [[ -f "$msg_file" ]] || continue
+
+    local msg_id=$(basename "$msg_file" .json)
+    local role=$(jq -r '.role // "unknown"' "$msg_file" 2>/dev/null)
+
+    # Busca parts dessa mensagem
+    local part_dir="$PART_DIR/$msg_id"
+    [[ -d "$part_dir" ]] || continue
+
+    for part_file in "$part_dir"/*.json; do
+      [[ -f "$part_file" ]] || continue
+      display_message "$part_file" "$search" "$filter_role" "$role"
+    done
+  done
+}
+
+# Main
+main() {
+  # Parse --raw primeiro
+  for arg in "$@"; do
+    [[ "$arg" == "-r" || "$arg" == "--raw" ]] && RAW_MODE=true && break
+  done
+  setup_colors
+  check_deps
+
+  local list_only=false show_all=false by_session=false filter_role="" search=""
+
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+    -s | --session) by_session=true ;;
+    -l | --list) list_only=true ;;
+    -a | --all) show_all=true ;;
+    -u | --user) filter_role="user" ;;
+    -t | --assistant) filter_role="assistant" ;;
+    -r | --raw) ;; # já processado
+    -h | --help) usage ;;
+    *) search="$1" ;;
+    esac
+    shift
+  done
+
+  [[ -z "$search" ]] && usage
+
+  # Modo: busca por ID de sessão
+  if [[ "$by_session" == true ]]; then
+    echo -e "${YELLOW}Recuperando sessão:${NC} $search\n"
+
+    if ! session_exists "$search"; then
+      local matching=$(find "$SESSION_DIR" -name "${search}*.json" -exec basename {} .json \; 2>/dev/null | head -5)
+
+      if [[ -z "$matching" ]]; then
+        echo -e "${RED}Sessão não encontrada: $search${NC}"
+        exit 1
+      fi
+
+      local count=$(wc -l <<<"$matching" | tr -d ' ')
+      if [[ "$count" -eq 1 ]]; then
+        search="$matching"
+        echo -e "${GREEN}Sessão encontrada: $search${NC}\n"
+      else
+        echo -e "${YELLOW}Múltiplas sessões encontradas:${NC}"
+        echo "$matching"
+        exit 1
+      fi
+    fi
+
+    process_session "$search" "" "$list_only" "$filter_role"
+    exit 0
+  fi
+
+  # Modo: busca por texto
+  echo -e "${YELLOW}Buscando por:${NC} \"$search\""
+  [[ -n "$filter_role" ]] && echo -e "${CYAN}Filtro:${NC} apenas mensagens de $filter_role"
+  echo ""
+
+  local sessions=$(find_sessions "$search")
+
+  if [[ -z "$sessions" ]]; then
+    echo -e "${RED}Nenhuma sessão encontrada com esse trecho.${NC}"
+    exit 1
+  fi
+
+  local session_count=$(wc -l <<<"$sessions" | tr -d ' ')
+  echo -e "${GREEN}Encontradas $session_count sessão(ões)${NC}\n"
+
+  local first=true
+  while IFS= read -r session_id; do
+    [[ -z "$session_id" ]] && continue
+
+    if [[ "$first" == false && "$show_all" == false && "$session_count" -gt 1 && "$list_only" == false ]]; then
+      echo -e "${YELLOW}Mostrar mensagens desta sessão? [s/N]${NC} "
+      read -r answer
+      if [[ ! "$answer" =~ ^[sS]$ ]]; then
+        echo ""
+        display_session_info "$session_id"
+        continue
+      fi
+    fi
+    first=false
+
+    process_session "$session_id" "$search" "$list_only" "$filter_role"
+  done <<<"$sessions"
+}
+
+main "$@"

@@ -2,17 +2,13 @@
 const fs = require('fs');
 const path = require('path');
 
-function fail(msg) { console.error(msg); process.exit(1); }
+function fail(msg) {
+  console.error(msg);
+  process.exit(1);
+}
 
 function readJSON(p) {
   return JSON.parse(fs.readFileSync(p, 'utf8'));
-}
-
-function assertSymlink(p) {
-  try {
-    const stat = fs.lstatSync(p);
-    if (!stat.isSymbolicLink()) fail(`${p} is not a symlink`);
-  } catch (e) { fail(`Cannot stat ${p}: ${e.message}`); }
 }
 
 function assertExists(p) {
@@ -20,25 +16,24 @@ function assertExists(p) {
 }
 
 function main() {
-  // Validate symlinks
-  assertSymlink(path.resolve('agents/instructions/CLAUDE.md'));
-  assertSymlink(path.resolve('agents/instructions/GEMINI.md'));
+  // Validate instruction files now under instructions/
+  assertExists(path.resolve('instructions/AGENTS.md'));
+  assertExists(path.resolve('instructions/CLAUDE.md'));
+  assertExists(path.resolve('instructions/GEMINI.md'));
 
-  // Profiles directory exists
+  // Profiles directory is optional in current layout
   const profilesDir = path.resolve('agents/profiles');
-  assertExists(profilesDir);
-
-  // Validate all profiles against schema (minimal)
-  const schema = readJSON(path.resolve('schemas/agent.profile.schema.json'));
-  const files = fs.readdirSync(profilesDir).filter(f => f.endsWith('.json'));
-  for (const f of files) {
-    const profile = readJSON(path.join(profilesDir, f));
-    for (const key of schema.required) {
-      if (!(key in profile)) fail(`Profile ${f} missing key: ${key}`);
+  if (fs.existsSync(profilesDir)) {
+    const schema = readJSON(path.resolve('schemas/agent.profile.schema.json'));
+    const files = fs.readdirSync(profilesDir).filter((f) => f.endsWith('.json'));
+    for (const f of files) {
+      const profile = readJSON(path.join(profilesDir, f));
+      for (const key of schema.required) {
+        if (!(key in profile)) fail(`Profile ${f} missing key: ${key}`);
+      }
+      const instrPath = path.resolve(profile.instructions);
+      if (!fs.existsSync(instrPath)) fail(`Profile ${f} instructions not found: ${instrPath}`);
     }
-    // instructions path must exist
-    const instrPath = path.resolve(profile.instructions);
-    if (!fs.existsSync(instrPath)) fail(`Profile ${f} instructions not found: ${instrPath}`);
   }
   console.log('Lint OK');
 }

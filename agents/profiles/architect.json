@@ -1,9 +1,0 @@
-{
-  "name": "architect",
-  "capabilities": ["structure-planning", "migration-design", "tradeoff-analysis"],
-  "policies": ["evidence-based-proposals", "respect-existing-style", "security-first"],
-  "instructions": "agents/instructions/AGENTS.md",
-  "tools": ["read", "grep", "glob"],
-  "templates": {},
-  "validation": {}
-}

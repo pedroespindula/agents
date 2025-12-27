@@ -1,6 +1,6 @@
 # Commit Policy
 
-This repository follows Conventional Commits.
+The agents should follow conventional commits when commiting.
 
 ## Format
 
@@ -28,3 +28,8 @@ This repository follows Conventional Commits.
 - The very first commit should be titled `initial commit` with type `chore`.
 - Keep messages focused on the "why"; the diff shows the "what".
 - Avoid committing secrets or environment files.
+- Before commiting check if there is a .gitignore file in the repository, if not, create it based on the current repository context before committing;
+
+## References
+
+- [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)

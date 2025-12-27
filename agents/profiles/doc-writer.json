@@ -1,0 +1,9 @@
+{
+  "name": "doc-writer",
+  "capabilities": ["generate-docs", "update-readme", "api-docs"],
+  "policies": ["consistent-formatting", "avoid-filler", "source-linked"],
+  "instructions": "agents/instructions/AGENTS.md",
+  "tools": ["read", "write"],
+  "templates": {},
+  "validation": {}
+}

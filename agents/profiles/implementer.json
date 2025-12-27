@@ -1,0 +1,9 @@
+{
+  "name": "implementer",
+  "capabilities": ["targeted-edits", "tests-validation", "refactor"],
+  "policies": ["respect-sandbox", "minimal-diffs", "no-unapproved-commits"],
+  "instructions": "agents/instructions/AGENTS.md",
+  "tools": ["read", "grep", "glob", "edit", "write"],
+  "templates": {},
+  "validation": {}
+}

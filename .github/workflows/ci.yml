@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run opencode:sync-md
+      - run: npm run opencode:lint-agents
+      - run: npm run opencode:validate-config
+      - run: npm run opencode:test
+  windows-symlink-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify symlinks on Windows
+        shell: powershell
+        run: |
+          $c = Get-Item "agents/instructions/CLAUDE.md"
+          $g = Get-Item "agents/instructions/GEMINI.md"
+          if (-not ($c.Attributes.ToString().Contains('ReparsePoint'))) { throw "CLAUDE.md not a symlink" }
+          if (-not ($g.Attributes.ToString().Contains('ReparsePoint'))) { throw "GEMINI.md not a symlink" }
+  macos-symlink-check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify symlinks on macOS/Linux
+        run: |
+          test -L agents/instructions/CLAUDE.md
+          test -L agents/instructions/GEMINI.md

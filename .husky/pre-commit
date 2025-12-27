@@ -1,0 +1,6 @@
+#!/bin/sh
+
+npm run opencode:sync-md || exit 1
+npm run opencode:lint-agents || exit 1
+npm run opencode:validate-config || exit 1
+# lint-staged disabled pending eslint/prettier setup

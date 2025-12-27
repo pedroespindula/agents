@@ -1,0 +1,9 @@
+{
+  "name": "ops-bot",
+  "capabilities": ["pr-automation", "release-flow", "changelog"],
+  "policies": ["no-destructive-commands", "require-approval"],
+  "instructions": "agents/instructions/AGENTS.md",
+  "tools": ["bash"],
+  "templates": {},
+  "validation": {}
+}

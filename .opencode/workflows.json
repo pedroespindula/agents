@@ -1,5 +1,0 @@
-{
-  "workflows": [
-    { "name": "create-pr", "path": "agents/workflows/pr.json" }
-  ]
-}

@@ -1,5 +1,0 @@
-{
-  "skills": [
-    { "name": "prompt-optimization", "path": "agents/skills/prompt-optimization.json" }
-  ]
-}

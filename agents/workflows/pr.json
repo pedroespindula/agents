@@ -1,8 +1,0 @@
-{
-  "name": "create-pr",
-  "phases": [
-    { "name": "analyze", "tasks": ["git status", "git diff", "git log"] },
-    { "name": "summarize", "tasks": ["draft PR body", "list changes"] },
-    { "name": "create", "tasks": ["gh pr create"] }
-  ]
-}

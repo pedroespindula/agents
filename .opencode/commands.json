@@ -1,6 +1,0 @@
-{
-  "commands": [
-    { "name": "sync-md", "script": "npm run opencode:sync-md", "description": "Validate symlinks for instruction mirrors" },
-    { "name": "ci", "script": "npm run opencode:ci", "description": "Run minimal CI checks" }
-  ]
-}

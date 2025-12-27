@@ -1,9 +1,0 @@
-{
-  "name": "prompt-optimization",
-  "description": "Improve prompt clarity, structure, and constraints",
-  "steps": [
-    "Identify goal and constraints",
-    "Structure with headers and bullets",
-    "Add validations and explicit outputs"
-  ]
-}

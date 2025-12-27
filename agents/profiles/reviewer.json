@@ -1,9 +1,0 @@
-{
-  "name": "reviewer",
-  "capabilities": ["code-review", "security-check", "style-consistency"],
-  "policies": ["no-destructive-commands", "no-unapproved-commits"],
-  "instructions": "agents/instructions/AGENTS.md",
-  "tools": ["read", "grep", "glob"],
-  "templates": {},
-  "validation": {}
-}

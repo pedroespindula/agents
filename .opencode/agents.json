@@ -1,9 +1,0 @@
-{
-  "agents": [
-    {"name": "reviewer", "capabilities": ["code-review", "security-check", "style-consistency"], "policies": ["no-destructive-commands", "no-unapproved-commits"], "instructions": "agents/instructions/AGENTS.md"},
-    {"name": "implementer", "capabilities": ["targeted-edits", "tests-validation", "refactor"], "policies": ["respect-sandbox", "minimal-diffs", "no-unapproved-commits"], "instructions": "agents/instructions/AGENTS.md"},
-    {"name": "architect", "capabilities": ["structure-planning", "migration-design", "tradeoff-analysis"], "policies": ["evidence-based-proposals", "respect-existing-style", "security-first"], "instructions": "agents/instructions/AGENTS.md"},
-    {"name": "doc-writer", "capabilities": ["generate-docs", "update-readme", "api-docs"], "policies": ["consistent-formatting", "avoid-filler", "source-linked"], "instructions": "agents/instructions/AGENTS.md"},
-    {"name": "ops-bot", "capabilities": ["pr-automation", "release-flow", "changelog"], "policies": ["no-destructive-commands", "require-approval"], "instructions": "agents/instructions/AGENTS.md"}
-  ]
-}

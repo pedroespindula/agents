@@ -5,9 +5,9 @@ This repository provides a structured setup to use OpenCode as the main engine a
 ## Key Structure
 
 - `opencode.jsonc` — project config using the OpenCode schema
-- `agents/instructions/AGENTS.md` — single source of truth
-- `agents/instructions/CLAUDE.md` — symlink to `AGENTS.md`
-- `agents/instructions/GEMINI.md` — symlink to `AGENTS.md`
+- `instructions/AGENTS.md` — single source of truth
+- `instructions/CLAUDE.md` — symlink to `AGENTS.md`
+- `instructions/GEMINI.md` — symlink to `AGENTS.md`
 - `agent/` — file-based agents
 - `command/` — file-based commands
 - `workflow/` — workflows as JSON files
@@ -17,11 +17,13 @@ This repository provides a structured setup to use OpenCode as the main engine a
 ## Symlink Setup
 
 macOS/Linux:
-- `cd agents/instructions`
+
+- `cd instructions`
 - `ln -s AGENTS.md CLAUDE.md`
 - `ln -s AGENTS.md GEMINI.md`
 
 Windows:
+
 - Enable Developer Mode (Settings > For developers) for non-admin symlink support
 - PowerShell (Administrator if Developer Mode is off):
   - `cd agents\instructions`

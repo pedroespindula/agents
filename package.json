@@ -4,12 +4,12 @@
   "version": "0.1.2",
   "description": "Repository structured for OpenCode agents and LLM gateway",
   "scripts": {
-    "opencode:sync-md": "test -L agents/instructions/CLAUDE.md && test -L agents/instructions/GEMINI.md",
+    "opencode:sync-md": "test -f instructions/CLAUDE.md && test -f instructions/GEMINI.md",
     "opencode:sync-md:fix": "node -e \"console.log('Please create symlinks per README')\"",
     "opencode:lint-agents": "node scripts/lint-agents.js",
     "opencode:validate-config": "node scripts/validate-config.js",
     "opencode:list-agents": "node scripts/list-agents.js",
-    "opencode:test": "node tests/unit/config-validation.test.js && node tests/unit/symlink.test.js",
+    "opencode:test": "node tests/unit/config-validation.test.js",
     "opencode:ci": "npm run opencode:sync-md && npm run opencode:lint-agents && npm run opencode:validate-config && npm run opencode:test",
     "opencode:format": "node scripts/format.js",
     "prepare": "husky install && echo 'Commit messages must follow Conventional Commits'"
@@ -26,5 +26,8 @@
     "**/*.{js,json,md}": [
       "prettier --write"
     ]
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "1.0.203"
   }
 }

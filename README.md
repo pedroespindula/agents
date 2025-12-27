@@ -4,11 +4,14 @@ This repository provides a structured setup to use OpenCode as the main engine a
 
 ## Key Structure
 
+- `opencode.jsonc` — project config using the OpenCode schema
 - `agents/instructions/AGENTS.md` — single source of truth
 - `agents/instructions/CLAUDE.md` — symlink to `AGENTS.md`
 - `agents/instructions/GEMINI.md` — symlink to `AGENTS.md`
-- `.opencode/commands.json` — register basic commands
-- `.opencode/agents.json` — register available agents
+- `agent/` — file-based agents
+- `command/` — file-based commands
+- `workflow/` — workflows as JSON files
+- `skill/` — skills catalog
 - `.github/workflows/ci.yml` — CI to validate symlinks and run checks
 
 ## Symlink Setup

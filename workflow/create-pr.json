@@ -1,0 +1,19 @@
+{
+  "name": "create-pr",
+  "phases": [
+    {
+      "name": "prepare",
+      "tasks": [
+        "Ensure branch is up to date",
+        "Run CI locally"
+      ]
+    },
+    {
+      "name": "open-pr",
+      "tasks": [
+        "Create PR with title and body",
+        "Link to related issues"
+      ]
+    }
+  ]
+}

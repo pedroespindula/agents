@@ -76,18 +76,19 @@ function parseFrontmatterMd(p) {
 
 // Validate agents
 if (!fs.existsSync(agentDir)) fail('Missing agent/ directory at root');
-const agentFiles = fs.readdirSync(agentDir).filter(f => f.endsWith('.md'));
+const agentFiles = fs.readdirSync(agentDir).filter((f) => f.endsWith('.md'));
 if (agentFiles.length === 0) fail('No agent/*.md files found');
 for (const f of agentFiles) {
   const { frontmatter } = parseFrontmatterMd(path.join(agentDir, f));
   if (!frontmatter.name) fail(`Agent ${f} missing name`);
   if (!frontmatter.description) fail(`Agent ${f} missing description`);
-  if (!frontmatter.tools || typeof frontmatter.tools !== 'object') fail(`Agent ${f} missing tools block`);
+  if (!frontmatter.tools || typeof frontmatter.tools !== 'object')
+    fail(`Agent ${f} missing tools block`);
 }
 
 // Validate commands
 if (!fs.existsSync(commandDir)) fail('Missing command/ directory at root');
-const commandFiles = fs.readdirSync(commandDir).filter(f => f.endsWith('.md'));
+const commandFiles = fs.readdirSync(commandDir).filter((f) => f.endsWith('.md'));
 if (commandFiles.length === 0) fail('No command/*.md files found');
 for (const f of commandFiles) {
   const { frontmatter, body } = parseFrontmatterMd(path.join(commandDir, f));
@@ -98,21 +99,50 @@ for (const f of commandFiles) {
 
 // Validate workflows
 if (!fs.existsSync(workflowDir)) fail('Missing workflow/ directory at root');
-const workflowFiles = fs.readdirSync(workflowDir).filter(f => f.endsWith('.json'));
+const workflowFiles = fs.readdirSync(workflowDir).filter((f) => f.endsWith('.json'));
 if (workflowFiles.length === 0) fail('No workflow/*.json files found');
 for (const f of workflowFiles) {
   const wf = requireJson(path.join(workflowDir, f));
-  if (!validateWorkflow(wf)) fail(`Workflow invalid (${f}): ${JSON.stringify(validateWorkflow.errors)}`);
-  if (wf.path && !fs.existsSync(path.resolve(wf.path))) fail(`Workflow path not found (${wf.path})`);
+  if (!validateWorkflow(wf))
+    fail(`Workflow invalid (${f}): ${JSON.stringify(validateWorkflow.errors)}`);
+  if (wf.path && !fs.existsSync(path.resolve(wf.path)))
+    fail(`Workflow path not found (${wf.path})`);
 }
 
 // Validate skills
 if (!fs.existsSync(skillDir)) fail('Missing skill/ directory at root');
-const skillFiles = fs.readdirSync(skillDir).filter(f => f.endsWith('.json'));
-if (skillFiles.length === 0) fail('No skill/*.json files found');
-for (const f of skillFiles) {
-  const skill = requireJson(path.join(skillDir, f));
-  if (!validateSkill(skill)) fail(`Skill invalid (${f}): ${JSON.stringify(validateSkill.errors)}`);
+const skillDirs = fs.readdirSync(skillDir).filter((f) => {
+  const stat = fs.statSync(path.join(skillDir, f));
+  return stat.isDirectory();
+});
+if (skillDirs.length === 0) fail('No skill/*/ directories found');
+for (const dir of skillDirs) {
+  const skillPath = path.join(skillDir, dir, 'SKILL.md');
+  if (!fs.existsSync(skillPath)) fail(`Missing SKILL.md in skill/${dir}/`);
+
+  const { frontmatter, body } = parseFrontmatterMd(skillPath);
+  if (!frontmatter.name) fail(`Skill ${dir} missing name in frontmatter`);
+  if (!frontmatter.description) fail(`Skill ${dir} missing description in frontmatter`);
+  if (frontmatter.name !== dir)
+    fail(
+      `Skill ${dir} name mismatch: frontmatter.name="${frontmatter.name}" but directory="${dir}"`
+    );
+  if (!body || body.length === 0) fail(`Skill ${dir} missing markdown body`);
+
+  // Validate name format: lowercase alphanumeric with single hyphens
+  const nameRegex = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+  if (!nameRegex.test(frontmatter.name)) {
+    fail(
+      `Skill ${dir} has invalid name format. Must be lowercase alphanumeric with single hyphens.`
+    );
+  }
+
+  // Validate description length (1-1024 characters)
+  if (frontmatter.description.length < 1 || frontmatter.description.length > 1024) {
+    fail(
+      `Skill ${dir} description must be 1-1024 characters, got ${frontmatter.description.length}`
+    );
+  }
 }
 
 console.log('Validation OK');

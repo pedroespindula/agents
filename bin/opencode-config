@@ -1,0 +1,2279 @@
+#!/usr/bin/env bash
+
+set -e
+
+# Colors for output (using tput for better compatibility)
+# Check if NO_COLOR is set or if output is not a terminal
+if [ -n "$NO_COLOR" ] || { ! [ -t 1 ] && [ -z "$FORCE_COLOR" ]; }; then
+  RED=''
+  GREEN=''
+  YELLOW=''
+  BLUE=''
+  BOLD=''
+  NC=''
+elif command -v tput >/dev/null 2>&1; then
+  RED=$(tput setaf 1 2>/dev/null || echo '')
+  GREEN=$(tput setaf 2 2>/dev/null || echo '')
+  YELLOW=$(tput setaf 3 2>/dev/null || echo '')
+  BLUE=$(tput setaf 4 2>/dev/null || echo '')
+  BOLD=$(tput bold 2>/dev/null || echo '')
+  NC=$(tput sgr0 2>/dev/null || echo '')
+else
+  RED=''
+  GREEN=''
+  YELLOW=''
+  BLUE=''
+  BOLD=''
+  NC=''
+fi
+
+# Paths
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SPECS_DIR="$REPO_ROOT/specs"
+ENV_FILE="$REPO_ROOT/.opencode-env"
+
+# Helper functions
+print_error() {
+  printf "%sError: %s%s\n" "$RED" "$1" "$NC" >&2
+}
+
+print_success() {
+  printf "%s✓ %s%s\n" "$GREEN" "$1" "$NC"
+}
+
+print_info() {
+  printf "%sℹ %s%s\n" "$BLUE" "$1" "$NC"
+}
+
+print_warning() {
+  printf "%s⚠ %s%s\n" "$YELLOW" "$1" "$NC"
+}
+
+# Safe sed in-place editing that works with symlinks
+safe_sed_inplace() {
+  local pattern="$1"
+  local file="$2"
+  
+  # Resolve symlink to real file
+  local real_file="$file"
+  if [ -L "$file" ]; then
+    # macOS compatible readlink (doesn't have -f flag)
+    if command -v greadlink >/dev/null 2>&1; then
+      real_file=$(greadlink -f "$file")
+    else
+      # Fallback: resolve symlink manually
+      real_file=$(python3 -c "import os; print(os.path.realpath('$file'))" 2>/dev/null || echo "$file")
+    fi
+  fi
+  
+  # Create temp file
+  local temp_file="${real_file}.tmp.$$"
+  
+  # Apply sed to temp file
+  sed "$pattern" "$real_file" > "$temp_file"
+  
+  # Replace original file
+  mv "$temp_file" "$real_file"
+}
+
+# Find latest backup of .opencode-env
+find_latest_backup() {
+  local backup_pattern="$ENV_FILE.backup*"
+  local latest_backup=""
+  
+  # Find all backups and get the most recent one
+  if compgen -G "$backup_pattern" > /dev/null 2>&1; then
+    # Get the most recently modified backup
+    latest_backup=$(ls -t "$ENV_FILE.backup"* 2>/dev/null | head -1)
+  fi
+  
+  echo "$latest_backup"
+}
+
+# Get current configuration
+get_current_config() {
+  if [ -f "$ENV_FILE" ]; then
+    grep "^export OPENCODE_AGENTS=" "$ENV_FILE" | cut -d'"' -f2
+  else
+    echo ""
+  fi
+}
+
+# Get metadata field from opencode.metadata.jsonc
+get_metadata_field() {
+  local config_dir="$1"
+  local field="$2"
+  local metadata_file="$config_dir/opencode.metadata.jsonc"
+
+  if [ ! -f "$metadata_file" ]; then
+    echo ""
+    return
+  fi
+
+  # Remove comments and extract field value
+  # This is a simple parser - works for basic cases
+  local value=$(grep -v "^[[:space:]]*\/\/" "$metadata_file" | grep "\"$field\"" | head -1 | sed -E 's/.*"'"$field"'"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
+  echo "$value"
+}
+
+# Get metadata array field (like tags)
+get_metadata_array() {
+  local config_dir="$1"
+  local field="$2"
+  local metadata_file="$config_dir/opencode.metadata.jsonc"
+
+  if [ ! -f "$metadata_file" ]; then
+    echo ""
+    return
+  fi
+
+  # Extract array values - find the line with the field and extract content between []
+  local line=$(grep -v "^[[:space:]]*\/\/" "$metadata_file" | grep "\"$field\"" | head -1)
+  if [ -n "$line" ]; then
+    # Extract content between [ and ]
+    local array_content=$(echo "$line" | sed -E 's/.*\[([^\]]*)\].*/\1/')
+    # Extract quoted strings, filter out the field name itself, and join with comma
+    local values=$(echo "$array_content" | grep -oE '"[^"]+"' | tr -d '"' | grep -v "^$field$" | tr '\n' ',' | sed 's/,$//' | sed 's/,/, /g')
+    echo "$values"
+  fi
+}
+
+# List available configurations
+cmd_list() {
+  printf "%sAvailable OpenCode configurations:%s\n\n" "$BLUE" "$NC"
+
+  local current=$(get_current_config)
+
+  for dir in "$SPECS_DIR"/*; do
+    if [ -d "$dir" ]; then
+      local name=$(basename "$dir")
+      local marker=""
+      local description=""
+
+      if [ "$name" = "$current" ]; then
+        marker="${GREEN}(active)${NC}"
+      fi
+
+      # Read description from metadata or .description file
+      description=$(get_metadata_field "$dir" "description")
+      if [ -z "$description" ] && [ -f "$dir/.description" ]; then
+        description=$(head -n 1 "$dir/.description")
+      fi
+
+      # Check for config file (support custom config_path relative to spec dir)
+      local config_path=$(get_metadata_field "$dir" "config_path")
+      if [ -z "$config_path" ]; then
+        config_path="config/opencode.jsonc"
+      fi
+
+      # Resolve config_file relative to spec directory
+      local config_file="$dir/$config_path"
+
+      # Check if has config file
+      if [ -f "$config_file" ]; then
+        printf "  • %s%s%s %s" "$GREEN" "$name" "$NC" "$marker"
+        if [ -n "$description" ]; then
+          printf " - %s" "$description"
+        fi
+        printf "\n"
+      else
+        printf "  • %s%s%s %s(no $config_path)%s %s" "$YELLOW" "$name" "$NC" "$YELLOW" "$NC" "$marker"
+        if [ -n "$description" ]; then
+          printf " - %s" "$description"
+        fi
+        printf "\n"
+      fi
+    fi
+  done
+
+  echo ""
+}
+
+# Show current configuration
+cmd_current() {
+  local current=$(get_current_config)
+
+  if [ -z "$current" ]; then
+    print_warning "No configuration active. Run 'opencode-config init' first."
+    exit 1
+  fi
+
+  printf "%sCurrent configuration:%s %s%s%s\n\n" "$BLUE" "$NC" "$GREEN" "$current" "$NC"
+
+  if [ -f "$ENV_FILE" ]; then
+    printf "%sEnvironment variables:%s\n" "$BLUE" "$NC"
+    grep "^export" "$ENV_FILE" | sed 's/^export /  /'
+  fi
+}
+
+# Show details of a specific configuration
+cmd_show() {
+  local config_name="$1"
+
+  if [ -z "$config_name" ]; then
+    print_error "Configuration name required. Usage: opencode-config show <name>"
+    exit 1
+  fi
+
+  local config_dir="$SPECS_DIR/$config_name"
+
+  if [ ! -d "$config_dir" ]; then
+    print_error "Configuration '$config_name' not found in $SPECS_DIR"
+    exit 1
+  fi
+
+  printf "%sConfiguration:%s %s%s%s\n" "$BLUE" "$NC" "$GREEN" "$config_name" "$NC"
+
+  # Show metadata if available
+  if [ -f "$config_dir/opencode.metadata.jsonc" ]; then
+    local description=$(get_metadata_field "$config_dir" "description")
+    local version=$(get_metadata_field "$config_dir" "version")
+    local author=$(get_metadata_field "$config_dir" "author")
+    local tags=$(get_metadata_array "$config_dir" "tags")
+    local config_path=$(get_metadata_field "$config_dir" "config_path")
+    local config_root=$(get_metadata_field "$config_dir" "config_root")
+
+    if [ -n "$description" ]; then
+      printf "%sDescription:%s %s\n" "$BLUE" "$NC" "$description"
+    fi
+    if [ -n "$version" ]; then
+      printf "%sVersion:%s %s\n" "$BLUE" "$NC" "$version"
+    fi
+    if [ -n "$author" ]; then
+      printf "%sAuthor:%s %s\n" "$BLUE" "$NC" "$author"
+    fi
+    if [ -n "$tags" ]; then
+      printf "%sTags:%s %s\n" "$BLUE" "$NC" "$tags"
+    fi
+    if [ -n "$config_path" ]; then
+      printf "%sConfig Path:%s %s\n" "$BLUE" "$NC" "$config_path"
+    fi
+    if [ -n "$config_root" ]; then
+      printf "%sConfig Root:%s %s\n" "$BLUE" "$NC" "$config_root"
+    fi
+  fi
+
+  printf "\n%sLocation:%s %s\n" "$BLUE" "$NC" "$config_dir"
+
+  # Get config_path from metadata (default: config/opencode.jsonc)
+  # Path is relative to spec directory
+  local config_path=$(get_metadata_field "$config_dir" "config_path")
+  if [ -z "$config_path" ]; then
+    config_path="config/opencode.jsonc"
+  fi
+
+  # Resolve absolute path to config file
+  local config_file="$config_dir/$config_path"
+
+  # Get config_root from metadata (default: config)
+  # Path is relative to spec directory
+  local config_root=$(get_metadata_field "$config_dir" "config_root")
+  if [ -z "$config_root" ]; then
+    config_root="config"
+  fi
+
+  # Resolve absolute path to config root directory
+  local config_root_dir="$config_dir/$config_root"
+
+  # Show resolved paths
+  printf "\n%sPaths:%s\n" "$BLUE" "$NC"
+  printf "  Config file: %s\n" "$config_file"
+  printf "  Config root: %s\n" "$config_root_dir"
+
+  # Check for key files
+  printf "\n%sStructure:%s\n" "$BLUE" "$NC"
+  if [ -f "$config_file" ]; then
+    echo "  ✓ $config_path"
+  else
+    echo "  ✗ $config_path (missing)"
+  fi
+  [ -f "$config_dir/opencode.metadata.jsonc" ] && echo "  ✓ opencode.metadata.jsonc" || echo "  ✗ opencode.metadata.jsonc (optional)"
+  [ -d "$config_root_dir/agent" ] && echo "  ✓ agent/" || echo "  ✗ agent/ (missing)"
+  [ -d "$config_root_dir/skill" ] && echo "  ✓ skill/" || echo "  ✗ skill/ (missing)"
+  [ -d "$config_root_dir/command" ] && echo "  ✓ command/" || echo "  ✗ command/ (missing)"
+
+  # Show agents if available
+  if [ -d "$config_root_dir/agent" ]; then
+    printf "\n%sAgents:%s\n" "$BLUE" "$NC"
+    find "$config_root_dir/agent" -name "*.md" -type f | while read -r agent; do
+      echo "  • $(basename "$agent" .md)"
+    done
+  fi
+
+  # Show skills if available
+  if [ -d "$config_root_dir/skill" ]; then
+    printf "\n%sSkills:%s\n" "$BLUE" "$NC"
+    find "$config_root_dir/skill" -mindepth 1 -maxdepth 1 -type d | while read -r skill; do
+      echo "  • $(basename "$skill")"
+    done
+  fi
+}
+
+# Initialize .opencode-env file (config only)
+cmd_init() {
+  local config_name="${1:-core}"
+  local use_backup=false
+
+  # Check for existing backup
+  local latest_backup=$(find_latest_backup)
+  
+  if [ -n "$latest_backup" ] && [ -f "$latest_backup" ]; then
+    echo ""
+    print_info "Found backup: $(basename "$latest_backup")"
+    
+    # Show backup info
+    local backup_config=$(grep "^export OPENCODE_AGENTS=" "$latest_backup" 2>/dev/null | cut -d'"' -f2)
+    if [ -n "$backup_config" ]; then
+      print_info "Backup configuration: $backup_config"
+    fi
+    
+    echo ""
+    read -p "Restore from backup? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      use_backup=true
+      # Extract config name from backup if not specified
+      if [ "$config_name" = "core" ] && [ -n "$backup_config" ]; then
+        config_name="$backup_config"
+      fi
+    fi
+  fi
+
+  # If restoring from backup
+  if [ "$use_backup" = true ]; then
+    cp "$latest_backup" "$ENV_FILE"
+    chmod +x "$ENV_FILE"
+    print_success "Restored .opencode-env from backup"
+    echo ""
+    print_info "Configuration restored: $config_name"
+    echo ""
+    print_info "Add this to your ~/.zshrc or ~/.bashrc:"
+    echo ""
+    echo "  [ -f \"\$HOME/agents/.opencode-env\" ] && source \"\$HOME/agents/.opencode-env\""
+    echo ""
+    print_info "Then reload your shell: source ~/.zshrc (or ~/.bashrc)"
+    return 0
+  fi
+
+  # Normal initialization flow
+  if [ -f "$ENV_FILE" ]; then
+    print_warning ".opencode-env already exists"
+    read -p "Overwrite? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      print_info "Aborted"
+      exit 0
+    fi
+  fi
+
+  local config_dir="$SPECS_DIR/$config_name"
+
+  if [ ! -d "$config_dir" ]; then
+    print_error "Configuration '$config_name' not found in $SPECS_DIR"
+    exit 1
+  fi
+
+  # Get config_path from metadata (default: config/opencode.jsonc)
+  # Path is relative to spec directory
+  local config_path=$(get_metadata_field "$config_dir" "config_path")
+  if [ -z "$config_path" ]; then
+    config_path="config/opencode.jsonc"
+  fi
+
+  # Get config_root from metadata (default: config)
+  # Path is relative to spec directory
+  local config_root=$(get_metadata_field "$config_dir" "config_root")
+  if [ -z "$config_root" ]; then
+    config_root="config"
+  fi
+
+  # Resolve absolute paths
+  local abs_config_file="$config_dir/$config_path"
+  local abs_config_root="$config_dir/$config_root"
+
+  cat >"$ENV_FILE" <<EOF
+#!/bin/bash
+# OpenCode Configuration
+# This file is auto-generated by opencode-config script
+# Do not edit manually - use: opencode-config use <config-name>
+
+export OPENCODE_AGENTS="$config_name"
+export PATH="\$PATH:$config_dir/bin/"
+export OPENCODE_CONFIG="$abs_config_file"
+export OPENCODE_CONFIG_DIR="$abs_config_root"
+EOF
+
+  chmod +x "$ENV_FILE"
+
+  print_success "Initialized .opencode-env with configuration: $config_name"
+  echo ""
+  print_info "Add this to your ~/.zshrc or ~/.bashrc:"
+  echo ""
+  echo "  [ -f \"\$HOME/agents/.opencode-env\" ] && source \"\$HOME/agents/.opencode-env\""
+  echo ""
+  print_info "Then reload your shell: source ~/.zshrc (or ~/.bashrc)"
+}
+
+# Full installation: init + completions + aliases
+cmd_install() {
+  local config_name="${1:-core}"
+
+  print_info "Starting full OpenCode installation..."
+  echo ""
+
+  # Step 1: Initialize configuration
+  print_info "Step 1/3: Initializing configuration..."
+  cmd_init "$config_name"
+
+  # Step 2: Install completions
+  echo ""
+  print_info "Step 2/3: Installing shell completions..."
+  local shell=$(detect_shell)
+  print_info "Detected shell: $shell"
+
+  case "$shell" in
+  bash)
+    install_bash_completion
+    ;;
+  zsh)
+    install_zsh_completion
+    ;;
+  *)
+    print_warning "Unknown shell: $shell. Skipping completions installation."
+    print_info "You can install them manually with: opencode-config completion install"
+    ;;
+  esac
+
+  # Step 3: Install aliases
+  echo ""
+  print_info "Step 3/3: Installing shell aliases..."
+
+  case "$shell" in
+  bash)
+    install_bash_aliases
+    ;;
+  zsh)
+    install_zsh_aliases
+    ;;
+  *)
+    print_warning "Unknown shell: $shell. Skipping aliases installation."
+    print_info "You can install them manually with: opencode-config aliases install"
+    ;;
+  esac
+
+  # Final message
+  echo ""
+  print_success "Installation completed successfully!"
+  echo ""
+  print_info "Reload your shell to apply changes: source ~/.zshrc (or ~/.bashrc)"
+}
+
+# Full uninstallation: remove config + completions + aliases
+cmd_uninstall() {
+  print_warning "This will remove OpenCode configuration, completions, and aliases"
+  echo ""
+  read -p "Continue? (y/N) " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    print_info "Aborted"
+    exit 0
+  fi
+
+  echo ""
+  print_info "Starting OpenCode uninstallation..."
+  echo ""
+
+  # Step 1: Remove .opencode-env
+  print_info "Step 1/3: Removing configuration..."
+  if [ -f "$ENV_FILE" ]; then
+    # Create backup
+    cp "$ENV_FILE" "$ENV_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+    rm -f "$ENV_FILE"
+    print_success "Configuration removed (backup created)"
+  else
+    print_warning "No .opencode-env file found"
+  fi
+
+  # Step 2: Uninstall completions
+  echo ""
+  print_info "Step 2/3: Removing shell completions..."
+  local shell=$(detect_shell)
+  print_info "Detected shell: $shell"
+
+  case "$shell" in
+  bash | zsh)
+    uninstall_completion "$shell"
+    ;;
+  *)
+    print_warning "Unknown shell: $shell. Skipping completions removal."
+    ;;
+  esac
+
+  # Step 3: Uninstall aliases
+  echo ""
+  print_info "Step 3/3: Removing shell aliases..."
+
+  case "$shell" in
+  bash | zsh)
+    uninstall_aliases "$shell"
+    ;;
+  *)
+    print_warning "Unknown shell: $shell. Skipping aliases removal."
+    ;;
+  esac
+
+  # Final message
+  echo ""
+  print_success "Uninstallation completed successfully!"
+  echo ""
+  print_info "Reload your shell to apply changes: source ~/.zshrc (or ~/.bashrc)"
+  echo ""
+  print_info "Backups were created with timestamp suffix"
+}
+
+# Switch to a different configuration
+cmd_use() {
+  local config_name="$1"
+
+  if [ -z "$config_name" ]; then
+    print_error "Configuration name required. Usage: opencode-config use <name>"
+    exit 1
+  fi
+
+  local config_dir="$SPECS_DIR/$config_name"
+
+  if [ ! -d "$config_dir" ]; then
+    print_error "Configuration '$config_name' not found in $SPECS_DIR"
+    echo ""
+    echo "Available configurations:"
+    cmd_list
+    exit 1
+  fi
+
+  # Get config_path from metadata (default: config/opencode.jsonc)
+  # Path is relative to spec directory
+  local config_path=$(get_metadata_field "$config_dir" "config_path")
+  if [ -z "$config_path" ]; then
+    config_path="config/opencode.jsonc"
+  fi
+
+  # Resolve absolute path to config file
+  local config_file="$config_dir/$config_path"
+
+  # Validate configuration has config file
+  if [ ! -f "$config_file" ]; then
+    print_warning "Configuration '$config_name' does not have $config_path at $config_file"
+    read -p "Continue anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      print_info "Aborted"
+      exit 0
+    fi
+  fi
+
+  # Get config_root from metadata (default: config)
+  # Path is relative to spec directory
+  local config_root=$(get_metadata_field "$config_dir" "config_root")
+  if [ -z "$config_root" ]; then
+    config_root="config"
+  fi
+
+  # Resolve absolute path to config root directory
+  local config_root_dir="$config_dir/$config_root"
+
+  # Initialize git submodules if they exist
+  if [ -f "$REPO_ROOT/.gitmodules" ]; then
+    print_info "Initializing git submodules..."
+    cd "$REPO_ROOT" || exit 1
+    if git submodule init && git submodule update; then
+      print_success "Git submodules initialized"
+    else
+      print_warning "Failed to initialize git submodules (non-fatal)"
+    fi
+  fi
+
+  # Backup existing .opencode-env
+  if [ -f "$ENV_FILE" ]; then
+    cp "$ENV_FILE" "$ENV_FILE.backup"
+    print_info "Backed up existing configuration to .opencode-env.backup"
+  fi
+
+  # Write new configuration with absolute paths
+  cat >"$ENV_FILE" <<EOF
+#!/bin/bash
+# OpenCode Configuration
+# This file is auto-generated by opencode-config script
+# Do not edit manually - use: opencode-config use <config-name>
+
+export OPENCODE_AGENTS="$config_name"
+export PATH="\$PATH:$config_dir/bin/"
+export OPENCODE_CONFIG="$config_file"
+export OPENCODE_CONFIG_DIR="$config_root_dir"
+EOF
+
+  chmod +x "$ENV_FILE"
+
+  print_success "Switched to configuration: $config_name"
+  print_warning "Reload your shell to apply changes: source ~/.zshrc"
+}
+
+# Create a new configuration
+cmd_create() {
+  local config_name="$1"
+  local template="$2"
+
+  if [ -z "$config_name" ]; then
+    print_error "Configuration name required. Usage: opencode-config create <name> [template]"
+    exit 1
+  fi
+
+  local config_dir="$SPECS_DIR/$config_name"
+
+  # Check if configuration already exists
+  if [ -d "$config_dir" ]; then
+    print_error "Configuration '$config_name' already exists at $config_dir"
+    exit 1
+  fi
+
+  # If template is specified, use it; otherwise use empty template
+  if [ -n "$template" ]; then
+    local template_dir="$SPECS_DIR/$template"
+
+    # Check if template exists
+    if [ ! -d "$template_dir" ]; then
+      print_error "Template '$template' not found in $SPECS_DIR"
+      echo ""
+      echo "Available templates:"
+      cmd_list
+      exit 1
+    fi
+
+    print_info "Creating new configuration '$config_name' from template '$template'..."
+
+    # Copy template
+    cp -r "$template_dir" "$config_dir"
+  else
+    # Use empty template
+    local empty_template="$REPO_ROOT/templates/spec"
+
+    if [ -d "$empty_template" ]; then
+      print_info "Creating new configuration '$config_name' with empty template..."
+      cp -r "$empty_template" "$config_dir"
+    else
+      # Fallback: create minimal structure
+      print_info "Creating new configuration '$config_name' with minimal structure..."
+      mkdir -p "$config_dir"/config/{agent,skill,command,instructions,policies/rules}
+
+      # Create minimal opencode.jsonc
+      cat >"$config_dir/config/opencode.jsonc" <<'EOF'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["instructions/**/*.md"],
+  "default_agent": "core",
+  "agent": {
+    "core": {
+      "steps": 50,
+      "color": "#6366F1"
+    }
+  }
+}
+EOF
+    fi
+  fi
+
+  # Create or update metadata file
+  local current_date=$(date +%Y-%m-%d)
+  if [ -f "$config_dir/opencode.metadata.jsonc" ]; then
+    # Update existing metadata with new name and dates
+    sed -i.bak "s/\"name\": \"[^\"]*\"/\"name\": \"$config_name\"/" "$config_dir/opencode.metadata.jsonc"
+    sed -i.bak "s/\"created\": \"[^\"]*\"/\"created\": \"$current_date\"/" "$config_dir/opencode.metadata.jsonc"
+    sed -i.bak "s/\"updated\": \"[^\"]*\"/\"updated\": \"$current_date\"/" "$config_dir/opencode.metadata.jsonc"
+    rm -f "$config_dir/opencode.metadata.jsonc.bak"
+  else
+    # Create new metadata file
+    cat >"$config_dir/opencode.metadata.jsonc" <<EOF
+{
+  // Metadata for OpenCode configuration
+  "name": "$config_name",
+  "description": "OpenCode configuration for $config_name",
+  "version": "1.0.0",
+  "author": "",
+  "tags": [],
+  "created": "$current_date",
+  "updated": "$current_date",
+  
+  // Path to OpenCode config file (relative to this directory)
+  "config_path": "config/opencode.jsonc",
+  
+  // Root directory for OpenCode structure (relative to this directory)
+  "config_root": "config"
+}
+EOF
+  fi
+
+  print_success "Configuration structure created at $config_dir"
+  print_info "Edit opencode.metadata.jsonc to customize description, author, and tags"
+
+  # Show what was created
+  echo ""
+  printf "%sCreated structure:%s\n" "$BLUE" "$NC"
+
+  if [ -f "$config_dir/config/opencode.jsonc" ]; then
+    echo "  ✓ config/opencode.jsonc"
+  fi
+
+  if [ -f "$config_dir/opencode.metadata.jsonc" ]; then
+    echo "  ✓ opencode.metadata.jsonc"
+  fi
+
+  if [ -d "$config_dir/config/agent" ]; then
+    local agent_count=$(find "$config_dir/config/agent" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$agent_count" -gt 0 ]; then
+      echo "  ✓ config/agent/ ($agent_count agents)"
+    else
+      echo "  ✓ config/agent/ (empty)"
+    fi
+  fi
+
+  if [ -d "$config_dir/config/skill" ]; then
+    local skill_count=$(find "$config_dir/config/skill" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$skill_count" -gt 0 ]; then
+      echo "  ✓ config/skill/ ($skill_count skills)"
+    else
+      echo "  ✓ config/skill/ (empty)"
+    fi
+  fi
+
+  if [ -d "$config_dir/config/command" ]; then
+    local command_count=$(find "$config_dir/config/command" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$command_count" -gt 0 ]; then
+      echo "  ✓ config/command/ ($command_count commands)"
+    else
+      echo "  ✓ config/command/ (empty)"
+    fi
+  fi
+
+  echo ""
+  print_info "Next steps:"
+  echo "  1. Edit configuration: vim $config_dir/config/opencode.jsonc"
+  echo "  2. Customize agents, skills, and commands as needed"
+  echo "  3. Activate: opencode-config use $config_name"
+  echo "  4. Reload shell: source ~/.zshrc"
+}
+
+# Detect shell
+detect_shell() {
+  # Use $SHELL environment variable (user's default shell)
+  case "$SHELL" in
+  */bash) echo "bash" ;;
+  */zsh) echo "zsh" ;;
+  *) echo "unknown" ;;
+  esac
+}
+
+# Install completions
+cmd_completion() {
+  local mode="${1:-auto}"
+  local completions_dir="$REPO_ROOT/completions"
+
+  case "$mode" in
+  install)
+    local shell="${2:-auto}"
+
+    if [ "$shell" = "auto" ]; then
+      shell=$(detect_shell)
+      print_info "Detected shell: $shell"
+      echo ""
+    fi
+
+    case "$shell" in
+    bash)
+      install_bash_completion
+      ;;
+    zsh)
+      install_zsh_completion
+      ;;
+    *)
+      print_error "Unknown shell: $shell"
+      echo ""
+      print_info "Supported shells: bash, zsh"
+      exit 1
+      ;;
+    esac
+    ;;
+  uninstall)
+    uninstall_completion "${2:-auto}"
+    ;;
+  status)
+    check_completion_status
+    ;;
+  help | --help | -h)
+    show_completion_help
+    ;;
+  *)
+    print_error "Unknown completion command: $mode"
+    echo ""
+    show_completion_help
+    exit 1
+    ;;
+  esac
+}
+
+# Install bash completion
+install_bash_completion() {
+  print_info "Installing bash completions..."
+
+  local rc_file="$HOME/.bashrc"
+  local completions_dir="$REPO_ROOT/completions"
+  local completion_block="# OpenCode completions
+if [ -f \"$completions_dir/opencode-config-completion.bash\" ]; then
+  source \"$completions_dir/opencode-config-completion.bash\"
+fi"
+
+  # Check if already installed
+  if grep -q "opencode-config-completion.bash" "$rc_file" 2>/dev/null; then
+    print_warning "Bash completions already installed in $rc_file"
+    return 0
+  fi
+
+  # Add to .bashrc
+  echo "" >>"$rc_file"
+  echo "$completion_block" >>"$rc_file"
+
+  print_success "Bash completions added to $rc_file"
+  print_info "Run: source $rc_file"
+}
+
+# Install zsh completion
+install_zsh_completion() {
+  print_info "Installing zsh completions..."
+
+  local rc_file="$HOME/.zshrc"
+  local completions_dir="$REPO_ROOT/completions"
+  local completion_block="# OpenCode completions
+fpath=($completions_dir \$fpath)
+autoload -Uz compinit && compinit"
+
+  # Check if already installed
+  if grep -q "opencode-config-completion.zsh" "$rc_file" 2>/dev/null; then
+    print_warning "Zsh completions already installed in $rc_file"
+    return 0
+  fi
+
+  # Create symlink with underscore prefix (zsh convention)
+  ln -sf "$completions_dir/opencode-config-completion.zsh" "$completions_dir/_opencode-config" 2>/dev/null || true
+
+  # Add to .zshrc if not already there
+  if ! grep -q "fpath=($completions_dir" "$rc_file" 2>/dev/null; then
+    echo "" >>"$rc_file"
+    echo "$completion_block" >>"$rc_file"
+    print_success "Zsh completions added to $rc_file"
+  else
+    print_success "Zsh fpath already configured"
+  fi
+
+  print_info "Run: source $rc_file"
+}
+
+# Uninstall completion
+uninstall_completion() {
+  local shell="${1:-auto}"
+  
+  if [ "$shell" = "auto" ]; then
+    shell=$(detect_shell)
+  fi
+  
+  # Check both bashrc and zshrc regardless of detected shell
+  local bashrc="$HOME/.bashrc"
+  local zshrc="$HOME/.zshrc"
+  local completions_dir="$REPO_ROOT/completions"
+  local removed=false
+  
+  # Remove from bashrc if present
+  if [ -f "$bashrc" ] && grep -q "opencode-config-completion.bash" "$bashrc" 2>/dev/null; then
+    # Create backup
+    cp "$bashrc" "$bashrc.backup"
+    # Remove completion block (match until the closing fi)
+    safe_sed_inplace '/# OpenCode completions/,/^fi$/d' "$bashrc"
+    print_success "Bash completions removed from $bashrc"
+    print_info "Backup saved to $bashrc.backup"
+    removed=true
+  fi
+  
+  # Remove from zshrc if present
+  if [ -f "$zshrc" ] && (grep -q "opencode-config-completion.zsh" "$zshrc" 2>/dev/null || grep -q "fpath=($completions_dir" "$zshrc" 2>/dev/null); then
+    # Create backup
+    cp "$zshrc" "$zshrc.backup"
+    # Remove completion block
+    safe_sed_inplace '/# OpenCode completions/,/compinit/d' "$zshrc"
+    # Remove symlink
+    rm -f "$completions_dir/_opencode-config"
+    print_success "Zsh completions removed from $zshrc"
+    print_info "Backup saved to $zshrc.backup"
+    removed=true
+  fi
+  
+  if [ "$removed" = false ]; then
+    print_warning "No completions found in $bashrc or $zshrc"
+  fi
+}
+
+# Check completion status
+check_completion_status() {
+  local shell=$(detect_shell)
+
+  printf "%sCompletion Status%s\n\n" "$BLUE" "$NC"
+  printf "%sDetected shell:%s %s\n\n" "$BLUE" "$NC" "$shell"
+
+  case "$shell" in
+  bash)
+    local rc_file="$HOME/.bashrc"
+    if grep -q "opencode-config-completion.bash" "$rc_file" 2>/dev/null; then
+      print_success "Bash completions installed in $rc_file"
+    else
+      print_warning "Bash completions not installed"
+      echo ""
+      print_info "Install with: opencode-config completion install"
+    fi
+    ;;
+  zsh)
+    local rc_file="$HOME/.zshrc"
+    local completions_dir="$REPO_ROOT/completions"
+    local installed=false
+
+    if grep -q "fpath=($completions_dir" "$rc_file" 2>/dev/null; then
+      print_success "Zsh fpath configured in $rc_file"
+      installed=true
+    fi
+
+    if [ -L "$completions_dir/_opencode-config" ]; then
+      print_success "Zsh completion symlink created"
+      installed=true
+    fi
+
+    if [ "$installed" = false ]; then
+      print_warning "Zsh completions not installed"
+      echo ""
+      print_info "Install with: opencode-config completion install"
+    fi
+    ;;
+  *)
+    print_warning "Unknown shell: $shell"
+    ;;
+  esac
+}
+
+# Show completion help
+show_completion_help() {
+  printf "%sCompletion Management%s\n\n" "$BOLD$BLUE" "$NC"
+
+  printf "%sUsage:%s\n" "$YELLOW" "$NC"
+  printf "  opencode-config completion <command> [options]\n\n"
+
+  printf "%sCommands:%s\n" "$YELLOW" "$NC"
+  printf "  %sinstall [shell]%s  Install completions (auto-detect or specify bash/zsh)\n" "$GREEN" "$NC"
+  printf "  %suninstall [shell]%s Remove completions\n" "$GREEN" "$NC"
+  printf "  %sstatus%s           Check completion installation status\n" "$GREEN" "$NC"
+  printf "  %shelp%s             Show this help message\n\n" "$GREEN" "$NC"
+
+  printf "%sExamples:%s\n" "$YELLOW" "$NC"
+  printf "  opencode-config completion install        # Auto-detect shell\n"
+  printf "  opencode-config completion install bash   # Install for bash\n"
+  printf "  opencode-config completion install zsh    # Install for zsh\n"
+  printf "  opencode-config completion status         # Check status\n"
+  printf "  opencode-config completion uninstall      # Remove completions\n\n"
+}
+
+# Aliases management
+cmd_aliases() {
+  local mode="${1:-help}"
+
+  case "$mode" in
+  install)
+    install_aliases "${2:-auto}"
+    ;;
+  uninstall)
+    uninstall_aliases "${2:-auto}"
+    ;;
+  status)
+    check_aliases_status
+    ;;
+  help | --help | -h)
+    show_aliases_help
+    ;;
+  *)
+    print_error "Unknown aliases command: $mode"
+    echo ""
+    show_aliases_help
+    exit 1
+    ;;
+  esac
+}
+
+# Install aliases
+install_aliases() {
+  local shell="${1:-auto}"
+
+  if [ "$shell" = "auto" ]; then
+    shell=$(detect_shell)
+    print_info "Detected shell: $shell"
+    echo ""
+  fi
+
+  case "$shell" in
+  bash)
+    install_bash_aliases
+    ;;
+  zsh)
+    install_zsh_aliases
+    ;;
+  *)
+    print_error "Unknown shell: $shell"
+    echo ""
+    print_info "Supported shells: bash, zsh"
+    exit 1
+    ;;
+  esac
+}
+
+# Install bash aliases
+install_bash_aliases() {
+  print_info "Installing bash aliases..."
+
+  local rc_file="$HOME/.bashrc"
+  local alias_block="# OpenCode aliases
+alias oc='$REPO_ROOT/bin/opencode-config'"
+
+  # Check if already installed
+  if grep -q "alias oc=" "$rc_file" 2>/dev/null; then
+    print_warning "Bash aliases already installed in $rc_file"
+    return 0
+  fi
+
+  # Add to .bashrc
+  echo "" >>"$rc_file"
+  echo "$alias_block" >>"$rc_file"
+
+  print_success "Bash aliases added to $rc_file"
+  print_info "Run: source $rc_file"
+}
+
+# Install zsh aliases
+install_zsh_aliases() {
+  print_info "Installing zsh aliases..."
+
+  local rc_file="$HOME/.zshrc"
+  local alias_block="# OpenCode aliases
+alias oc='$REPO_ROOT/bin/opencode-config'"
+
+  # Check if already installed
+  if grep -q "alias oc=" "$rc_file" 2>/dev/null; then
+    print_warning "Zsh aliases already installed in $rc_file"
+    return 0
+  fi
+
+  # Add to .zshrc
+  echo "" >>"$rc_file"
+  echo "$alias_block" >>"$rc_file"
+
+  print_success "Zsh aliases added to $rc_file"
+  print_info "Run: source $rc_file"
+}
+
+# Uninstall aliases
+uninstall_aliases() {
+  local shell="${1:-auto}"
+  
+  if [ "$shell" = "auto" ]; then
+    shell=$(detect_shell)
+  fi
+  
+  # Check both bashrc and zshrc regardless of detected shell
+  local bashrc="$HOME/.bashrc"
+  local zshrc="$HOME/.zshrc"
+  local removed=false
+  
+  # Remove from bashrc if present
+  if [ -f "$bashrc" ] && grep -q "alias oc=" "$bashrc" 2>/dev/null; then
+    # Create backup
+    cp "$bashrc" "$bashrc.backup"
+    # Remove alias block
+    safe_sed_inplace '/# OpenCode aliases/,/alias oc=/d' "$bashrc"
+    print_success "Bash aliases removed from $bashrc"
+    print_info "Backup saved to $bashrc.backup"
+    removed=true
+  fi
+  
+  # Remove from zshrc if present
+  if [ -f "$zshrc" ] && grep -q "alias oc=" "$zshrc" 2>/dev/null; then
+    # Create backup
+    cp "$zshrc" "$zshrc.backup"
+    # Remove alias block
+    safe_sed_inplace '/# OpenCode aliases/,/alias oc=/d' "$zshrc"
+    print_success "Zsh aliases removed from $zshrc"
+    print_info "Backup saved to $zshrc.backup"
+    removed=true
+  fi
+  
+  if [ "$removed" = false ]; then
+    print_warning "No aliases found in $bashrc or $zshrc"
+  fi
+}
+
+# Check aliases status
+check_aliases_status() {
+  local shell=$(detect_shell)
+
+  printf "%sAliases Status%s\n\n" "$BLUE" "$NC"
+  printf "%sDetected shell:%s %s\n\n" "$BLUE" "$NC" "$shell"
+
+  case "$shell" in
+  bash)
+    local rc_file="$HOME/.bashrc"
+    if grep -q "alias oc=" "$rc_file" 2>/dev/null; then
+      print_success "Bash aliases installed in $rc_file"
+      echo ""
+      printf "%sCurrent alias:%s\n" "$BLUE" "$NC"
+      grep "alias oc=" "$rc_file" | sed 's/^/  /'
+    else
+      print_warning "Bash aliases not installed"
+      echo ""
+      print_info "Install with: opencode-config aliases install"
+    fi
+    ;;
+  zsh)
+    local rc_file="$HOME/.zshrc"
+    if grep -q "alias oc=" "$rc_file" 2>/dev/null; then
+      print_success "Zsh aliases installed in $rc_file"
+      echo ""
+      printf "%sCurrent alias:%s\n" "$BLUE" "$NC"
+      grep "alias oc=" "$rc_file" | sed 's/^/  /'
+    else
+      print_warning "Zsh aliases not installed"
+      echo ""
+      print_info "Install with: opencode-config aliases install"
+    fi
+    ;;
+  *)
+    print_warning "Unknown shell: $shell"
+    ;;
+  esac
+}
+
+# Show aliases help
+show_aliases_help() {
+  printf "%sAliases Management%s\n\n" "$BOLD$BLUE" "$NC"
+
+  printf "%sUsage:%s\n" "$YELLOW" "$NC"
+  printf "  opencode-config aliases <command> [options]\n\n"
+
+  printf "%sCommands:%s\n" "$YELLOW" "$NC"
+  printf "  %sinstall [shell]%s  Install aliases (auto-detect or specify bash/zsh)\n" "$GREEN" "$NC"
+  printf "  %suninstall [shell]%s Remove aliases\n" "$GREEN" "$NC"
+  printf "  %sstatus%s           Check alias installation status\n" "$GREEN" "$NC"
+  printf "  %shelp%s             Show this help message\n\n" "$GREEN" "$NC"
+
+  printf "%sAliases:%s\n" "$YELLOW" "$NC"
+  printf "  %soc%s  → opencode-config\n\n" "$GREEN" "$NC"
+
+  printf "%sExamples:%s\n" "$YELLOW" "$NC"
+  printf "  opencode-config aliases install        # Auto-detect shell\n"
+  printf "  opencode-config aliases install bash   # Install for bash\n"
+  printf "  opencode-config aliases install zsh    # Install for zsh\n"
+  printf "  opencode-config aliases status         # Check status\n"
+  printf "  opencode-config aliases uninstall      # Remove aliases\n"
+  printf "  oc list                                # Use alias\n"
+  printf "  oc recover \"session text\"              # Use recover subcommand\n\n"
+}
+
+# Recover subcommand - delegates to opencode-recover functionality
+cmd_recover() {
+  local STORAGE_DIR="$HOME/.local/share/opencode/storage"
+  local PART_DIR="$STORAGE_DIR/part"
+  local SESSION_DIR="$STORAGE_DIR/session"
+  local MESSAGE_DIR="$STORAGE_DIR/message"
+
+  # Check if jq is installed
+  if ! command -v jq &>/dev/null; then
+    print_error "jq is not installed. Install with: brew install jq"
+    exit 1
+  fi
+
+  # Colors for recover output
+  local RAW_MODE=false
+
+  # Parse --raw flag first
+  for arg in "$@"; do
+    if [ "$arg" = "-r" ] || [ "$arg" = "--raw" ]; then
+      RAW_MODE=true
+      break
+    fi
+  done
+
+  # Setup colors based on RAW_MODE
+  if [ "$RAW_MODE" = true ]; then
+    local R_RED='' R_GREEN='' R_BLUE='' R_YELLOW='' R_CYAN='' R_NC=''
+  else
+    local R_RED='\033[0;31m' R_GREEN='\033[0;32m' R_BLUE='\033[0;34m'
+    local R_YELLOW='\033[1;33m' R_CYAN='\033[0;36m' R_NC='\033[0m'
+  fi
+
+  # Show usage if no arguments
+  if [ $# -eq 0 ]; then
+    cat <<EOF
+Usage: opencode-config recover [options] <text-snippet | session-id>
+
+Search for OpenCode messages containing the specified text snippet
+or recover messages from a specific session by ID.
+
+Options:
+  -s, --session   Treat argument as session ID (instead of text search)
+  -l, --list      List only found sessions (without showing messages)
+  -a, --all       Show all messages from all found sessions
+  -u, --user      Show only user messages
+  -t, --assistant Show only assistant messages
+  -r, --raw       Remove colors from output (useful for redirecting to file)
+  -h, --help      Show this help
+
+Examples:
+  opencode-config recover "README.md"                       # Search by text
+  oc recover "README.md"                                    # Using alias
+  oc recover -s ses_439806ec8ffe7J6ExbqH5Um6Hg             # Search by session
+  oc recover -u "my prompt"                                 # Only user messages
+  oc recover -t -s ses_xxx                                  # Only assistant responses
+  oc recover -r "text" > output.txt                         # Save to file without colors
+EOF
+    exit 1
+  fi
+
+  # Parse arguments
+  local list_only=false show_all=false by_session=false filter_role="" search=""
+
+  while [ $# -gt 0 ]; do
+    case $1 in
+    -s | --session) by_session=true ;;
+    -l | --list) list_only=true ;;
+    -a | --all) show_all=true ;;
+    -u | --user) filter_role="user" ;;
+    -t | --assistant) filter_role="assistant" ;;
+    -r | --raw) ;; # already processed
+    -h | --help)
+      cmd_recover
+      exit 0
+      ;;
+    *) search="$1" ;;
+    esac
+    shift
+  done
+
+  if [ -z "$search" ]; then
+    print_error "Search text or session ID required"
+    cmd_recover
+    exit 1
+  fi
+
+  # Helper functions for recover
+  find_sessions() {
+    local search_text="$1"
+    grep -r "$search_text" "$PART_DIR" -l 2>/dev/null |
+      xargs -P4 -I{} jq -r '.sessionID // empty' {} 2>/dev/null |
+      sort -u
+  }
+
+  session_exists() {
+    local session_id="$1"
+    [ -n "$(find "$SESSION_DIR" -name "${session_id}.json" -print -quit 2>/dev/null)" ]
+  }
+
+  get_session_info() {
+    local session_id="$1"
+    local session_file=$(find "$SESSION_DIR" -name "${session_id}.json" -print -quit 2>/dev/null)
+    [ -n "$session_file" ] && [ -f "$session_file" ] && cat "$session_file"
+  }
+
+  display_session_info() {
+    local session_id="$1"
+    local session_info=$(get_session_info "$session_id")
+
+    echo -e "${R_YELLOW}════════════════════════════════════════════════════════════${R_NC}"
+    echo -e "${R_CYAN}Session:${R_NC} $session_id"
+
+    if [ -z "$session_info" ]; then
+      echo -e "${R_RED}(Session metadata not found)${R_NC}"
+    else
+      local title directory created date_str=""
+      title=$(jq -r '.title // "No title"' <<<"$session_info")
+      directory=$(jq -r '.directory // "?"' <<<"$session_info")
+      created=$(jq -r '.time.created // 0' <<<"$session_info")
+
+      if [ "$created" != "0" ] && [ "$created" != "null" ]; then
+        date_str=$(date -r $((created / 1000)) "+%Y-%m-%d %H:%M" 2>/dev/null || true)
+      fi
+
+      echo -e "${R_CYAN}Title:${R_NC} $title"
+      echo -e "${R_CYAN}Directory:${R_NC} $directory"
+      [ -n "$date_str" ] && echo -e "${R_CYAN}Date:${R_NC} $date_str"
+    fi
+    echo -e "${R_YELLOW}════════════════════════════════════════════════════════════${R_NC}\n"
+  }
+
+  display_message() {
+    local file="$1"
+    local search_text="$2"
+    local filter="$3"
+    local msg_role="$4"
+
+    # Filter by role if specified
+    [ -n "$filter" ] && [ "$msg_role" != "$filter" ] && return
+
+    local text=$(jq -r '.text // empty' "$file" 2>/dev/null)
+    [ -z "$text" ] && return
+
+    # Color based on role
+    local role_color=$R_NC role_label="[UNKNOWN]"
+    case "$msg_role" in
+    user)
+      role_color=$R_GREEN
+      role_label="[USER]"
+      ;;
+    assistant)
+      role_color=$R_BLUE
+      role_label="[ASSISTANT]"
+      ;;
+    esac
+
+    echo -e "${role_color}${role_label}${R_NC}"
+
+    # Highlight search text if exists
+    if [ -n "$search_text" ] && [ "$RAW_MODE" = false ] && grep -q "$search_text" <<<"$text" 2>/dev/null; then
+      GREP_COLOR='1;33' grep --color=always -E "$search_text|$" <<<"$text"
+    else
+      echo "$text"
+    fi
+    echo -e "\n${R_CYAN}---${R_NC}\n"
+  }
+
+  process_session() {
+    local session_id="$1"
+    local search_text="$2"
+    local list="$3"
+    local filter="$4"
+
+    display_session_info "$session_id"
+    [ "$list" = true ] && return
+
+    local msg_dir="$MESSAGE_DIR/$session_id"
+
+    if [ ! -d "$msg_dir" ]; then
+      echo -e "${R_RED}No messages found.${R_NC}"
+      return
+    fi
+
+    # Process messages ordered by name (contains timestamp)
+    for msg_file in $(ls -1 "$msg_dir"/*.json 2>/dev/null | sort); do
+      [ -f "$msg_file" ] || continue
+
+      local msg_id=$(basename "$msg_file" .json)
+      local role=$(jq -r '.role // "unknown"' "$msg_file" 2>/dev/null)
+
+      # Find parts for this message
+      local part_dir="$PART_DIR/$msg_id"
+      [ -d "$part_dir" ] || continue
+
+      for part_file in "$part_dir"/*.json; do
+        [ -f "$part_file" ] || continue
+        display_message "$part_file" "$search_text" "$filter" "$role"
+      done
+    done
+  }
+
+  # Main recover logic
+  if [ "$by_session" = true ]; then
+    echo -e "${R_YELLOW}Recovering session:${R_NC} $search\n"
+
+    if ! session_exists "$search"; then
+      local matching=$(find "$SESSION_DIR" -name "${search}*.json" -exec basename {} .json \; 2>/dev/null | head -5)
+
+      if [ -z "$matching" ]; then
+        echo -e "${R_RED}Session not found: $search${R_NC}"
+        exit 1
+      fi
+
+      local count=$(wc -l <<<"$matching" | tr -d ' ')
+      if [ "$count" -eq 1 ]; then
+        search="$matching"
+        echo -e "${R_GREEN}Session found: $search${R_NC}\n"
+      else
+        echo -e "${R_YELLOW}Multiple sessions found:${R_NC}"
+        echo "$matching"
+        exit 1
+      fi
+    fi
+
+    process_session "$search" "" "$list_only" "$filter_role"
+    exit 0
+  fi
+
+  # Search by text
+  echo -e "${R_YELLOW}Searching for:${R_NC} \"$search\""
+  [ -n "$filter_role" ] && echo -e "${R_CYAN}Filter:${R_NC} only $filter_role messages"
+  echo ""
+
+  local sessions=$(find_sessions "$search")
+
+  if [ -z "$sessions" ]; then
+    echo -e "${R_RED}No sessions found with this text.${R_NC}"
+    exit 1
+  fi
+
+  local session_count=$(wc -l <<<"$sessions" | tr -d ' ')
+  echo -e "${R_GREEN}Found $session_count session(s)${R_NC}\n"
+
+  local first=true
+  while IFS= read -r session_id; do
+    [ -z "$session_id" ] && continue
+
+    if [ "$first" = false ] && [ "$show_all" = false ] && [ "$session_count" -gt 1 ] && [ "$list_only" = false ]; then
+      echo -e "${R_YELLOW}Show messages from this session? [y/N]${R_NC} "
+      read -r answer
+      if [[ ! "$answer" =~ ^[yY]$ ]]; then
+        echo ""
+        display_session_info "$session_id"
+        continue
+      fi
+    fi
+    first=false
+
+    process_session "$session_id" "$search" "$list_only" "$filter_role"
+  done <<<"$sessions"
+}
+
+# Convert string to kebab-case
+to_kebab_case() {
+  local input="$1"
+  # Convert to lowercase and replace non-alphanumeric with hyphens
+  echo "$input" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g' | sed -E 's/^-+|-+$//g'
+}
+
+# Extract repository name from URL
+extract_repo_name() {
+  local url="$1"
+  # Extract last part of URL and remove .git suffix
+  local name=$(basename "$url" .git)
+  to_kebab_case "$name"
+}
+
+# Detect installer type in a directory
+detect_installer() {
+  local dir="$1"
+
+  # Check for install.sh
+  if [ -f "$dir/install.sh" ]; then
+    echo "bash install.sh"
+    return 0
+  fi
+
+  # Check for package.json
+  if [ -f "$dir/package.json" ]; then
+    # Check if it's an npm package (has name field)
+    local pkg_name=$(grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' "$dir/package.json" | cut -d'"' -f4)
+
+    if [ -n "$pkg_name" ]; then
+      # Check for postinstall script
+      if grep -q '"postinstall"' "$dir/package.json"; then
+        echo "npx $pkg_name"
+        return 0
+      fi
+
+      # Check for setup script
+      if grep -q '"setup"' "$dir/package.json"; then
+        echo "npm install && npm run setup"
+        return 0
+      fi
+
+      # Default to npm install
+      echo "npm install"
+      return 0
+    fi
+  fi
+
+  # No installer detected
+  echo ""
+  return 1
+}
+
+# Find opencode config file recursively
+find_opencode_config() {
+  local dir="$1"
+
+  # Try common locations first
+  local common_paths=(
+    "$dir/opencode.jsonc"
+    "$dir/opencode.json"
+    "$dir/.opencode/opencode.jsonc"
+    "$dir/.opencode/opencode.json"
+  )
+
+  for path in "${common_paths[@]}"; do
+    if [ -f "$path" ]; then
+      # Return path relative to dir
+      echo "${path#$dir/}"
+      return 0
+    fi
+  done
+
+  # Fallback: search recursively (max depth 3)
+  local found=$(find "$dir" -maxdepth 3 -name "opencode.json*" -type f | head -1)
+  if [ -n "$found" ]; then
+    echo "${found#$dir/}"
+    return 0
+  fi
+
+  return 1
+}
+
+# Determine config root from config path
+get_config_root() {
+  local config_path="$1"
+
+  # If config is in .opencode/, root is .opencode/
+  if [[ "$config_path" == .opencode/* ]]; then
+    echo ".opencode"
+    return 0
+  fi
+
+  # If config is in subdirectory, use that directory
+  local dir=$(dirname "$config_path")
+  if [ "$dir" != "." ]; then
+    echo "$dir"
+    return 0
+  fi
+
+  # Default to current directory
+  echo "."
+  return 0
+}
+
+# Setup .gitignore for remote config directory
+# This ensures only opencode.json(c) is committed, everything else is ignored
+setup_config_gitignore() {
+  local config_dir="$1"
+  
+  if [ ! -d "$config_dir" ]; then
+    print_warning "Config directory does not exist: $config_dir"
+    return 1
+  fi
+  
+  local gitignore_file="$config_dir/.gitignore"
+  
+  print_info "Setting up .gitignore for remote config..."
+  
+  cat >"$gitignore_file" <<'EOF'
+# Ignore everything in this directory (remote config)
+*
+
+# Except opencode config files (these should be committed)
+!opencode.json
+!opencode.jsonc
+
+# Keep this .gitignore file
+!.gitignore
+EOF
+  
+  print_success "Created .gitignore at: $gitignore_file"
+  print_info "Only opencode.json(c) will be committed, all other files ignored"
+  
+  return 0
+}
+
+# Import external repository as submodule
+cmd_import() {
+  local repo_url=""
+  local config_name=""
+  local installer_cmd=""
+  local installer_profile=""
+  local install_path="config"
+
+  # Parse arguments
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    --installer)
+      installer_cmd="$2"
+      shift 2
+      ;;
+    --profile)
+      installer_profile="$2"
+      shift 2
+      ;;
+    --install-path)
+      install_path="$2"
+      shift 2
+      ;;
+    *)
+      if [ -z "$repo_url" ]; then
+        repo_url="$1"
+      elif [ -z "$config_name" ]; then
+        config_name="$1"
+      else
+        print_error "Unknown argument: $1"
+        exit 1
+      fi
+      shift
+      ;;
+    esac
+  done
+
+  # Validate repository URL
+  if [ -z "$repo_url" ]; then
+    print_error "Repository URL required. Usage: opencode-config import <url> [name] [--profile <profile>] [--install-path <path>] [--installer <command>]"
+    exit 1
+  fi
+
+  # Auto-generate config name from URL if not provided
+  if [ -z "$config_name" ]; then
+    config_name=$(extract_repo_name "$repo_url")
+    print_info "Auto-detected config name: $config_name"
+  else
+    # Convert provided name to kebab-case
+    config_name=$(to_kebab_case "$config_name")
+    print_info "Using config name: $config_name"
+  fi
+
+  local wrapper_dir="$SPECS_DIR/$config_name"
+  local source_dir="$wrapper_dir/source"
+
+  # Check if configuration already exists
+  if [ -d "$wrapper_dir" ]; then
+    print_error "Configuration '$config_name' already exists at $wrapper_dir"
+    exit 1
+  fi
+
+  print_info "Importing repository: $repo_url"
+  print_info "Target location: $wrapper_dir"
+
+  # Create wrapper directory
+  mkdir -p "$wrapper_dir"
+
+  # Add as git submodule
+  print_info "Adding git submodule..."
+  cd "$REPO_ROOT" || exit 1
+
+  if ! git submodule add "$repo_url" "specs/$config_name/source" 2>&1; then
+    print_error "Failed to add git submodule"
+    rm -rf "$wrapper_dir"
+    exit 1
+  fi
+
+  # Initialize and update submodule
+  if ! git submodule init "specs/$config_name/source" 2>&1; then
+    print_error "Failed to initialize submodule"
+    git submodule deinit -f "specs/$config_name/source" 2>&1 || true
+    git rm -f "specs/$config_name/source" 2>&1 || true
+    rm -rf "$wrapper_dir"
+    exit 1
+  fi
+
+  if ! git submodule update "specs/$config_name/source" 2>&1; then
+    print_error "Failed to update submodule"
+    git submodule deinit -f "specs/$config_name/source" 2>&1 || true
+    git rm -f "specs/$config_name/source" 2>&1 || true
+    rm -rf "$wrapper_dir"
+    exit 1
+  fi
+
+  print_success "Git submodule added successfully"
+
+  # Detect or use provided installer
+  if [ -z "$installer_cmd" ]; then
+    print_info "Detecting installer..."
+    installer_cmd=$(detect_installer "$source_dir")
+
+    if [ -n "$installer_cmd" ]; then
+      print_success "Detected installer: $installer_cmd"
+    else
+      print_warning "No installer detected"
+    fi
+  else
+    print_info "Using provided installer: $installer_cmd"
+  fi
+
+  # Run installer if detected
+  if [ -n "$installer_cmd" ]; then
+    print_info "Running installer..."
+    cd "$source_dir" || exit 1
+
+    # Build installer command with profile and install path
+    local full_installer_cmd="$installer_cmd"
+    
+    # Add profile if provided (as first positional argument)
+    if [ -n "$installer_profile" ]; then
+      full_installer_cmd="$full_installer_cmd $installer_profile"
+      print_info "Using profile: $installer_profile"
+    fi
+    
+    # Add install path as --install-dir flag (absolute path relative to wrapper_dir)
+    local abs_install_path="$wrapper_dir/$install_path"
+    full_installer_cmd="$full_installer_cmd --install-dir \"$abs_install_path\""
+    print_info "Install path: $abs_install_path"
+
+    if eval "$full_installer_cmd"; then
+      print_success "Installer completed successfully"
+    else
+      print_warning "Installer failed (exit code: $?)"
+      print_info "You may need to run the installer manually"
+    fi
+
+    cd "$REPO_ROOT" || exit 1
+  fi
+
+  # Find opencode config file
+  print_info "Detecting OpenCode configuration..."
+  local config_search_dir="$wrapper_dir/$install_path"
+  local config_path=""
+  
+  # First, check if install_path exists and has config
+  if [ -d "$config_search_dir" ]; then
+    config_path=$(find_opencode_config "$config_search_dir" || true)
+    if [ -n "$config_path" ]; then
+      # Make path relative to wrapper_dir
+      config_path="$install_path/$config_path"
+      print_success "Found config at: $config_path"
+    fi
+  fi
+  
+  # Fallback 1: Check source directory if not found in install_path
+  if [ -z "$config_path" ] && [ -d "$source_dir" ]; then
+    print_info "Checking source directory for config..."
+    local source_config=$(find_opencode_config "$source_dir" || true)
+    if [ -n "$source_config" ]; then
+      print_success "Found config in source at: source/$source_config"
+      
+      # Copy config from source to install_path
+      print_info "Copying config to install path..."
+      local source_config_file="$source_dir/$source_config"
+      local target_config_file="$config_search_dir/$(basename "$source_config")"
+      
+      # Create target directory if needed
+      mkdir -p "$(dirname "$target_config_file")"
+      
+      # Copy the config file
+      cp "$source_config_file" "$target_config_file"
+      
+      # Update config_path to point to copied file
+      config_path="$install_path/$(basename "$source_config")"
+      print_success "Copied config to: $config_path"
+    fi
+  fi
+  
+  # Fallback 2: Create default config if still not found
+  if [ -z "$config_path" ]; then
+    print_warning "No opencode.json(c) found in $install_path or source/"
+    config_path="$install_path/opencode.jsonc"
+    
+    # Create default opencode.jsonc if directory exists
+    if [ -d "$config_search_dir" ]; then
+      print_info "Creating default opencode.jsonc..."
+      cat >"$config_search_dir/opencode.jsonc" <<'EOF'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["context/**/*.md"],
+  "default_agent": "openagent"
+}
+EOF
+      print_success "Created default config at: $config_path"
+    fi
+  fi
+
+  # Determine config root based on where config was found
+  local config_root=""
+  if [[ "$config_path" == source/* ]]; then
+    # Config is in source directory
+    config_root=$(get_config_root "$config_path")
+    print_info "Config root: $config_root (in source)"
+  else
+    # Config is in install_path
+    config_root=$(get_config_root "$config_path")
+    print_info "Config root: $config_root"
+  fi
+
+  # Paths are already relative to wrapper_dir
+  local rel_config_path="$config_path"
+  local rel_config_root="$config_root"
+
+  # Create metadata file
+  print_info "Creating metadata file..."
+  local current_date=$(date +%Y-%m-%d)
+
+  cat >"$wrapper_dir/opencode.metadata.jsonc" <<EOF
+{
+  // Metadata for imported OpenCode configuration
+  "name": "$config_name",
+  "description": "Imported from $repo_url",
+  "version": "1.0.0",
+  "author": "",
+  "tags": ["external", "submodule", "imported"],
+  "created": "$current_date",
+  "updated": "$current_date",
+  
+  // Repository information
+  "repository": {
+    "url": "$repo_url",
+    "type": "git-submodule"
+  },
+  
+  // Path to OpenCode config file (relative to this directory)
+  "config_path": "$rel_config_path",
+  
+  // Root directory for OpenCode structure (relative to this directory)
+  "config_root": "$rel_config_root"
+}
+EOF
+
+  print_success "Metadata file created"
+
+  # Setup .gitignore for remote config directory
+  # This ensures only opencode.json(c) is committed
+  local config_dir_path="$wrapper_dir/$install_path"
+  if [ -d "$config_dir_path" ]; then
+    setup_config_gitignore "$config_dir_path"
+  fi
+
+  # Show summary
+  echo ""
+  printf "%sImport Summary:%s\n" "$BOLD$BLUE" "$NC"
+  printf "  %sName:%s %s\n" "$BLUE" "$NC" "$config_name"
+  printf "  %sRepository:%s %s\n" "$BLUE" "$NC" "$repo_url"
+  printf "  %sLocation:%s %s\n" "$BLUE" "$NC" "$wrapper_dir"
+  printf "  %sSource Dir:%s %s (submodule, read-only)\n" "$BLUE" "$NC" "$source_dir"
+  printf "  %sInstall Path:%s %s\n" "$BLUE" "$NC" "$install_path"
+  printf "  %sConfig Path:%s %s\n" "$BLUE" "$NC" "$rel_config_path"
+  printf "  %sConfig Root:%s %s\n" "$BLUE" "$NC" "$rel_config_root"
+
+  if [ -n "$installer_cmd" ]; then
+    printf "  %sInstaller:%s %s" "$BLUE" "$NC" "$installer_cmd"
+    if [ -n "$installer_profile" ]; then
+      printf " %s" "$installer_profile"
+    fi
+    printf " %s\n" "$abs_install_path"
+  fi
+
+  echo ""
+  print_success "Import completed successfully!"
+  echo ""
+  print_info "Next steps:"
+  echo "  1. Review configuration: opencode-config show $config_name"
+  echo "  2. Activate: opencode-config use $config_name"
+  echo "  3. Reload shell: source ~/.zshrc"
+}
+
+# Manage external configurations
+cmd_remote() {
+  local subcommand="${1:-help}"
+  shift || true
+
+  case "$subcommand" in
+    install)
+      cmd_remote_install "$@"
+      ;;
+    uninstall|remove)
+      cmd_remote_uninstall "$@"
+      ;;
+    update|upgrade)
+      cmd_remote_update "$@"
+      ;;
+    list|ls)
+      cmd_remote_list "$@"
+      ;;
+    help|--help|-h)
+      show_remote_help
+      ;;
+    *)
+      print_error "Unknown remote command: $subcommand"
+      echo ""
+      show_remote_help
+      exit 1
+      ;;
+  esac
+}
+
+# Install external configuration
+cmd_remote_install() {
+  # Delegate to cmd_import
+  cmd_import "$@"
+}
+
+# Uninstall external configuration
+cmd_remote_uninstall() {
+  local config_name="$1"
+
+  if [ -z "$config_name" ]; then
+    print_error "Configuration name required. Usage: opencode-config remote uninstall <name>"
+    exit 1
+  fi
+
+  local config_dir="$SPECS_DIR/$config_name"
+
+  if [ ! -d "$config_dir" ]; then
+    print_error "Configuration '$config_name' not found in $SPECS_DIR"
+    exit 1
+  fi
+
+  # Check if it's an external configuration (has submodule)
+  local source_dir="$config_dir/source"
+  if [ ! -d "$source_dir" ] || [ ! -f "$config_dir/opencode.metadata.jsonc" ]; then
+    print_error "Configuration '$config_name' is not an external configuration"
+    print_info "Use 'opencode-config create' for local configurations"
+    exit 1
+  fi
+
+  # Show what will be removed
+  echo ""
+  printf "%sConfiguration to remove:%s\n" "$YELLOW" "$NC"
+  printf "  Name: %s\n" "$config_name"
+  printf "  Location: %s\n" "$config_dir"
+  
+  local repo_url=$(get_metadata_field "$config_dir" "repository.url" 2>/dev/null || echo "unknown")
+  if [ -n "$repo_url" ] && [ "$repo_url" != "unknown" ]; then
+    printf "  Repository: %s\n" "$repo_url"
+  fi
+  
+  echo ""
+  print_warning "This will remove the configuration and git submodule"
+  read -p "Continue? (y/N) " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    print_info "Aborted"
+    exit 0
+  fi
+
+  # Check if it's the current configuration
+  local current=$(get_current_config)
+  if [ "$config_name" = "$current" ]; then
+    print_warning "This is the current active configuration"
+    print_info "Switching to 'core' configuration first..."
+    cmd_use "core"
+  fi
+
+  # Remove git submodule
+  print_info "Removing git submodule..."
+  cd "$REPO_ROOT" || exit 1
+  
+  if git submodule deinit -f "specs/$config_name/source" 2>&1; then
+    print_success "Submodule deinitialized"
+  else
+    print_warning "Failed to deinitialize submodule (continuing...)"
+  fi
+
+  if git rm -f "specs/$config_name/source" 2>&1; then
+    print_success "Submodule removed from git"
+  else
+    print_warning "Failed to remove submodule from git (continuing...)"
+  fi
+
+  # Remove submodule directory from .git/modules
+  rm -rf ".git/modules/specs/$config_name" 2>/dev/null || true
+
+  # Remove wrapper directory
+  rm -rf "$config_dir"
+  print_success "Configuration directory removed"
+
+  echo ""
+  print_success "Configuration '$config_name' uninstalled successfully"
+  
+  if [ "$config_name" = "$current" ]; then
+    print_info "Active configuration switched to: core"
+    print_warning "Reload your shell: source ~/.zshrc"
+  fi
+}
+
+# Update external configuration
+cmd_remote_update() {
+  local config_name="$1"
+
+  if [ -z "$config_name" ]; then
+    print_error "Configuration name required. Usage: opencode-config remote update <name>"
+    exit 1
+  fi
+
+  local config_dir="$SPECS_DIR/$config_name"
+
+  if [ ! -d "$config_dir" ]; then
+    print_error "Configuration '$config_name' not found in $SPECS_DIR"
+    exit 1
+  fi
+
+  # Check if it's an external configuration (has submodule)
+  local source_dir="$config_dir/source"
+  if [ ! -d "$source_dir" ] || [ ! -f "$config_dir/opencode.metadata.jsonc" ]; then
+    print_error "Configuration '$config_name' is not an external configuration"
+    print_info "Use 'opencode-config create' for local configurations"
+    exit 1
+  fi
+
+  print_info "Updating configuration: $config_name"
+  echo ""
+
+  # Update git submodule
+  print_info "Updating git submodule..."
+  cd "$REPO_ROOT" || exit 1
+
+  if git submodule update --remote "specs/$config_name/source" 2>&1; then
+    print_success "Submodule updated to latest commit"
+  else
+    print_error "Failed to update submodule"
+    exit 1
+  fi
+
+  # Get installer info from metadata
+  local install_path=$(get_metadata_field "$config_dir" "config_root")
+  if [ -z "$install_path" ]; then
+    install_path="config"
+  fi
+
+  # Check if there's an installer
+  local installer_cmd=$(detect_installer "$source_dir")
+  
+  if [ -n "$installer_cmd" ]; then
+    print_info "Re-running installer..."
+    
+    # Ask for profile
+    echo ""
+    read -p "Enter profile (or press Enter to skip): " installer_profile
+    
+    cd "$source_dir" || exit 1
+    
+    # Build installer command
+    local full_installer_cmd="$installer_cmd"
+    if [ -n "$installer_profile" ]; then
+      full_installer_cmd="$full_installer_cmd $installer_profile"
+    fi
+    
+    local abs_install_path="$config_dir/$install_path"
+    full_installer_cmd="$full_installer_cmd --install-dir \"$abs_install_path\""
+    
+    if eval "$full_installer_cmd"; then
+      print_success "Installer completed successfully"
+    else
+      print_warning "Installer failed (exit code: $?)"
+    fi
+    
+    cd "$REPO_ROOT" || exit 1
+  else
+    print_info "No installer found, skipping installation step"
+  fi
+
+  # Update metadata timestamp
+  local current_date=$(date +%Y-%m-%d)
+  if [ -f "$config_dir/opencode.metadata.jsonc" ]; then
+    sed -i.bak "s/\"updated\": \"[^\"]*\"/\"updated\": \"$current_date\"/" "$config_dir/opencode.metadata.jsonc"
+    rm -f "$config_dir/opencode.metadata.jsonc.bak"
+  fi
+
+  # Setup/update .gitignore for remote config directory
+  local config_dir_path="$config_dir/$install_path"
+  if [ -d "$config_dir_path" ]; then
+    setup_config_gitignore "$config_dir_path"
+  fi
+
+  echo ""
+  print_success "Configuration '$config_name' updated successfully"
+  
+  # Check if it's the current configuration
+  local current=$(get_current_config)
+  if [ "$config_name" = "$current" ]; then
+    print_warning "This is the current active configuration"
+    print_info "Reload your shell to apply changes: source ~/.zshrc"
+  fi
+}
+
+# List external configurations
+cmd_remote_list() {
+  printf "%sExternal Configurations:%s\n\n" "$BLUE" "$NC"
+
+  local current=$(get_current_config)
+  local found=false
+
+  for dir in "$SPECS_DIR"/*; do
+    if [ -d "$dir" ]; then
+      local name=$(basename "$dir")
+      local source_dir="$dir/source"
+      
+      # Check if it's an external configuration (has submodule and metadata)
+      if [ -d "$source_dir" ] && [ -f "$dir/opencode.metadata.jsonc" ]; then
+        found=true
+        local marker=""
+        
+        if [ "$name" = "$current" ]; then
+          marker="${GREEN}(active)${NC}"
+        fi
+
+        local description=$(get_metadata_field "$dir" "description")
+        local repo_url=$(get_metadata_field "$dir" "repository.url" 2>/dev/null || echo "")
+        local tags=$(get_metadata_array "$dir" "tags")
+
+        printf "  • %s%s%s %s\n" "$GREEN" "$name" "$NC" "$marker"
+        
+        if [ -n "$description" ]; then
+          printf "    %s\n" "$description"
+        fi
+        
+        if [ -n "$repo_url" ]; then
+          printf "    %sRepository:%s %s\n" "$BLUE" "$NC" "$repo_url"
+        fi
+        
+        if [ -n "$tags" ]; then
+          printf "    %sTags:%s %s\n" "$BLUE" "$NC" "$tags"
+        fi
+        
+        echo ""
+      fi
+    fi
+  done
+
+  if [ "$found" = false ]; then
+    print_info "No external configurations found"
+    echo ""
+    print_info "Install one with: opencode-config remote install <url>"
+  fi
+}
+
+# Show remote help
+show_remote_help() {
+  printf "%sRemote Configurations%s\n\n" "$BOLD$BLUE" "$NC"
+
+  printf "%sUsage:%s\n" "$YELLOW" "$NC"
+  printf "  opencode-config remote <command> [options]\n\n"
+
+  printf "%sCommands:%s\n" "$YELLOW" "$NC"
+  printf "  %sinstall <url> [name]%s     Install remote configuration from repository\n" "$GREEN" "$NC"
+  printf "  %suninstall <name>%s         Remove remote configuration\n" "$GREEN" "$NC"
+  printf "  %supdate <name>%s            Update remote configuration to latest version\n" "$GREEN" "$NC"
+  printf "  %slist%s                     List all remote configurations\n" "$GREEN" "$NC"
+  printf "  %shelp%s                     Show this help message\n\n" "$GREEN" "$NC"
+
+  printf "%sInstall Options:%s\n" "$YELLOW" "$NC"
+  printf "  --profile <profile>        Profile to pass to installer (e.g., essential, full)\n"
+  printf "  --install-path <path>      Custom installation path (default: config/)\n"
+  printf "  --installer <command>      Custom installer command\n\n"
+
+  printf "%sExamples:%s\n" "$YELLOW" "$NC"
+  printf "  # Install with auto-detected name\n"
+  printf "  opencode-config remote install https://github.com/darrenhinde/OpenAgentsControl\n\n"
+  printf "  # Install with custom name and profile\n"
+  printf "  opencode-config remote install https://github.com/user/repo myconfig --profile essential\n\n"
+  printf "  # List all remote configurations\n"
+  printf "  opencode-config remote list\n\n"
+  printf "  # Update configuration\n"
+  printf "  opencode-config remote update openagentscontrol\n\n"
+  printf "  # Uninstall configuration\n"
+  printf "  opencode-config remote uninstall openagentscontrol\n\n"
+}
+
+# Show help
+cmd_help() {
+  printf "%sOpenCode Configuration Manager%s\n\n" "$BOLD$BLUE" "$NC"
+
+  printf "%sUsage:%s\n" "$YELLOW" "$NC"
+  printf "  opencode-config <command> [options]\n\n"
+
+  printf "%sCommands:%s\n" "$YELLOW" "$NC"
+  printf "  %sinstall [name]%s        Full installation: init + completions + aliases (default: core)\n" "$GREEN" "$NC"
+  printf "  %suninstall%s             Remove configuration, completions, and aliases\n" "$GREEN" "$NC"
+  printf "  %sinit [name]%s           Initialize .opencode-env only (default: core)\n" "$GREEN" "$NC"
+  printf "  %slist%s                  List all available configurations\n" "$GREEN" "$NC"
+  printf "  %scurrent%s               Show current active configuration\n" "$GREEN" "$NC"
+  printf "  %suse <name>%s            Switch to a different configuration\n" "$GREEN" "$NC"
+  printf "  %sshow <name>%s           Show details of a specific configuration\n" "$GREEN" "$NC"
+  printf "  %screate <name> [tpl]%s   Create new configuration (empty by default, or from template)\n" "$GREEN" "$NC"
+  printf "  %sremote <cmd>%s          Manage remote configurations (install/uninstall/update/list)\n" "$GREEN" "$NC"
+  printf "  %simport <url> [name]%s   Import external repository (deprecated, use 'remote install')\n" "$GREEN" "$NC"
+  printf "  %scompletion <cmd>%s      Manage shell completions (install/uninstall/status)\n" "$GREEN" "$NC"
+  printf "  %saliases <cmd>%s         Manage shell aliases (install/uninstall/status)\n" "$GREEN" "$NC"
+  printf "  %srecover <text>%s        Recover OpenCode session messages\n" "$GREEN" "$NC"
+  printf "  %shelp%s                  Show this help message\n\n" "$GREEN" "$NC"
+
+  printf "%sExamples:%s\n" "$YELLOW" "$NC"
+  printf "  opencode-config install                # Full setup (recommended for first time)\n"
+  printf "  opencode-config uninstall              # Remove everything (creates backups)\n"
+  printf "  opencode-config init                   # Only initialize config\n"
+  printf "  opencode-config list\n"
+  printf "  opencode-config create my-config\n"
+  printf "  opencode-config remote install https://github.com/darrenhinde/OpenAgentsControl\n"
+  printf "  opencode-config remote install <url> myconfig --profile essential\n"
+  printf "  opencode-config remote list\n"
+  printf "  opencode-config remote update openagentscontrol\n"
+  printf "  opencode-config remote uninstall openagentscontrol\n"
+  printf "  opencode-config use openagentscontrol\n"
+  printf "  opencode-config current\n"
+  printf "  opencode-config show core\n"
+  printf "  opencode-config completion install\n"
+  printf "  opencode-config aliases install\n"
+  printf "  opencode-config recover \"session text\"\n\n"
+
+  printf "%sSetup:%s\n" "$YELLOW" "$NC"
+  printf "  Add this to your ~/.zshrc or ~/.bashrc:\n"
+  printf "    [ -f \"\$HOME/agents/.opencode-env\" ] && source \"\$HOME/agents/.opencode-env\"\n\n"
+}
+
+# Main command dispatcher
+main() {
+  local command="${1:-help}"
+
+  case "$command" in
+  install)
+    cmd_install "$2"
+    ;;
+  uninstall)
+    cmd_uninstall
+    ;;
+  init)
+    cmd_init "$2"
+    ;;
+  list | ls)
+    cmd_list
+    ;;
+  current)
+    cmd_current
+    ;;
+  use | switch)
+    cmd_use "$2"
+    ;;
+  show | info)
+    cmd_show "$2"
+    ;;
+  create | new)
+    cmd_create "$2" "$3"
+    ;;
+  remote)
+    shift
+    cmd_remote "$@"
+    ;;
+  import)
+    shift
+    cmd_import "$@"
+    ;;
+  completion | completions)
+    shift
+    cmd_completion "$@"
+    ;;
+  aliases | alias)
+    shift
+    cmd_aliases "$@"
+    ;;
+  recover)
+    shift
+    cmd_recover "$@"
+    ;;
+  help | --help | -h)
+    cmd_help
+    ;;
+  *)
+    print_error "Unknown command: $command"
+    echo ""
+    cmd_help
+    exit 1
+    ;;
+  esac
+}
+
+main "$@"

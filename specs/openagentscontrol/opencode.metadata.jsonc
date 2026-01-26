@@ -1,0 +1,22 @@
+{
+  // Metadata for imported OpenCode configuration
+  "name": "openagentscontrol",
+  "description": "Imported from https://github.com/darrenhinde/OpenAgentsControl.git",
+  "version": "1.0.0",
+  "author": "",
+  "tags": ["external", "submodule", "imported"],
+  "created": "2026-01-26",
+  "updated": "2026-01-26",
+  
+  // Repository information
+  "repository": {
+    "url": "https://github.com/darrenhinde/OpenAgentsControl.git",
+    "type": "git-submodule"
+  },
+  
+  // Path to OpenCode config file (relative to this directory)
+  "config_path": "config/opencode.json",
+  
+  // Root directory for OpenCode structure (relative to this directory)
+  "config_root": "config"
+}

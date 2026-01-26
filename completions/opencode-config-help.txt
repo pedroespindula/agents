@@ -1,0 +1,47 @@
+# OpenCode Config - Quick Reference
+
+## Main Commands
+  init [config]          Initialize .opencode-env file
+  install [config]       Full installation (init + completions + aliases)
+  uninstall              Full uninstallation
+  list, ls               List all available configurations
+  current                Show current active configuration
+  use <config>           Switch to a different configuration
+  show <config>          Show details of a specific configuration
+  create <name> [tpl]    Create new configuration
+
+## Subcommands
+  remote <cmd>           Manage remote configurations
+    install <url> [name] [--profile <p>] [--install-path <path>]
+    uninstall <name>
+    update <name>
+    list, ls
+
+  completion <cmd>       Manage shell completions
+    install [shell]
+    uninstall [shell]
+    status
+
+  aliases <cmd>          Manage shell aliases
+    install [shell]
+    uninstall [shell]
+    status
+
+  recover [opts] <text>  Recover OpenCode session messages
+    -s, --session        Treat as session ID
+    -l, --list           List sessions only
+    -a, --all            Show all messages
+    -u, --user           User messages only
+    -t, --assistant      Assistant messages only
+    -r, --raw            No colors (for piping)
+
+## Import Flags
+  --installer <cmd>      Custom installer command
+  --profile <name>       Profile for installer (e.g., essential, full)
+  --install-path <path>  Installation path (default: config/)
+
+## Examples
+  opencode-config use core
+  opencode-config remote install https://github.com/user/repo.git
+  opencode-config recover "README.md"
+  oc list  # Using alias

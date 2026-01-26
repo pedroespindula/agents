@@ -1,14 +1,33 @@
 # AGENTS.md
 
+**Generated:** 2026-01-26 | **Commit:** 8af57ff | **Branch:** main
+
 Single source of truth for AI coding agents (Claude, Gemini, Copilot, Cursor).
 CLAUDE.md, GEMINI.md, .cursorrules, and .github/copilot-instructions.md are symlinks to this file.
 
 ## Repository Overview
 
-This repository manages multiple OpenCode agent configurations with a CLI tool for switching between setups. It contains:
-- **bin/**: Shell scripts for configuration management (`opencode-config`)
-- **specs/**: Multiple agent configurations (core, personal-agents, etc.)
-- Each spec contains: agents, skills, commands, and opencode.jsonc
+Multi-configuration manager for OpenCode agent setups. CLI tool (`opencode-config`) switches between independent agent configurations stored in `specs/`.
+
+| Directory | Purpose |
+|-----------|---------|
+| `bin/` | CLI tools (`opencode-config`, 1800+ lines) |
+| `specs/core/` | Primary configuration (agents, skills, commands) |
+| `specs/oh-my-opencode/` | External: OhMyOpenCode plugin (submodule) |
+| `specs/openagentscontrol/` | External: OpenAgentsControl (submodule) |
+| `templates/` | New config scaffolds |
+
+## WHERE TO LOOK
+
+| Task | Location | Notes |
+|------|----------|-------|
+| Switch config | `./bin/opencode-config use <name>` | Generates `.opencode-env` |
+| Add agent | `specs/<name>/config/agent/` | YAML frontmatter in `.md` |
+| Add skill | `specs/<name>/config/skill/<name>/SKILL.md` | Dir + SKILL.md |
+| Add command | `specs/<name>/config/command/` | Dir + COMMAND.md |
+| Validate | `npm run opencode:ci` | From any spec directory |
+| Create config | `./bin/opencode-config create <name>` | Uses `templates/spec/` |
+| Import external | `./bin/opencode-config remote install <url>` | Auto-detects installer |
 
 ## Build/Lint/Test Commands
 

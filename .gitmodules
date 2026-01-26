@@ -4,3 +4,6 @@
 [submodule "specs/openagentscontrol/source"]
 	path = specs/openagentscontrol/source
 	url = https://github.com/darrenhinde/OpenAgentsControl.git
+[submodule "specs/oh-my-opencode/source"]
+	path = specs/oh-my-opencode/source
+	url = https://github.com/code-yeongyu/oh-my-opencode.git

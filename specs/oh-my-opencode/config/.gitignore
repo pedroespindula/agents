@@ -1,0 +1,10 @@
+# Ignore everything in this directory (remote config)
+*
+
+# Except opencode config files (these should be committed)
+!opencode.json
+!opencode.jsonc
+!oh-my-opencode.json
+
+# Keep this .gitignore file
+!.gitignore

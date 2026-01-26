@@ -1,0 +1,21 @@
+{
+  "name": "oh-my-opencode",
+  "description": "The Best AI Agent Harness - Batteries-Included OpenCode Plugin with Multi-Model Orchestration, Parallel Background Agents, and Crafted LSP/AST Tools",
+  "version": "3.1.0",
+  "author": "code-yeongyu",
+  "tags": ["external", "submodule", "imported", "plugin", "multi-agent", "orchestration"],
+  "created": "2026-01-26",
+  "updated": "2026-01-26",
+
+  // Repository information
+  "repository": {
+    "url": "https://github.com/code-yeongyu/oh-my-opencode.git",
+    "type": "git-submodule"
+  },
+
+  // Path to OpenCode config file (relative to this directory)
+  "config_path": "config/opencode.jsonc",
+
+  // Root directory for OpenCode structure (relative to this directory)
+  "config_root": "config"
+}

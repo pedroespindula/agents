@@ -1,0 +1,34 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "oh-my-opencode@latest",
+    "opencode-antigravity-auth@1.3.1"
+  ],
+  "compaction": {
+    "auto": true,
+    "prune": true
+  },
+  "watcher": {
+    "ignore": [
+      "node_modules/**",
+      "dist/**",
+      ".git/**",
+      "*.log"
+    ]
+  },
+  "mcp": {
+    "atlassian": {
+      "type": "remote",
+      "url": "https://mcp.atlassian.com/v1/mcp",
+      "enabled": true
+    },
+    "github": {
+      "type": "remote",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer {env:GITHUB_PAT_TOKEN}"
+      }
+    }
+  }
+}

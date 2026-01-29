@@ -1593,6 +1593,8 @@ cmd_import() {
   local installer_cmd=""
   local installer_profile=""
   local install_path="config"
+  local config_path_arg=""
+  local use_copy=false
 
   # Parse arguments
   while [ $# -gt 0 ]; do
@@ -1608,6 +1610,14 @@ cmd_import() {
     --install-path)
       install_path="$2"
       shift 2
+      ;;
+    --config-path)
+      config_path_arg="$2"
+      shift 2
+      ;;
+    --copy)
+      use_copy=true
+      shift
       ;;
     *)
       if [ -z "$repo_url" ]; then
@@ -1625,7 +1635,7 @@ cmd_import() {
 
   # Validate repository URL
   if [ -z "$repo_url" ]; then
-    print_error "Repository URL required. Usage: opencode-config import <url> [name] [--profile <profile>] [--install-path <path>] [--installer <command>]"
+    print_error "Repository URL required. Usage: opencode-config import <url> [name] [--config-path <path>] [--copy] [--profile <profile>] [--install-path <path>] [--installer <command>]"
     exit 1
   fi
 
@@ -1683,122 +1693,172 @@ cmd_import() {
 
   print_success "Git submodule added successfully"
 
-  # Detect or use provided installer
-  if [ -z "$installer_cmd" ]; then
-    print_info "Detecting installer..."
-    installer_cmd=$(detect_installer "$source_dir")
+  # Variables for metadata (declared here to be accessible after if/else)
+  local rel_config_path=""
+  local rel_config_root=""
 
-    if [ -n "$installer_cmd" ]; then
-      print_success "Detected installer: $installer_cmd"
-    else
-      print_warning "No installer detected"
+  # If --config-path is provided, create symlink or copy and skip installer
+  if [ -n "$config_path_arg" ]; then
+    print_info "Using provided config path: $config_path_arg"
+    
+    # Verify the path exists in source
+    local source_config_dir="$source_dir/$config_path_arg"
+    if [ ! -d "$source_config_dir" ]; then
+      print_error "Config path '$config_path_arg' not found in source repository"
+      print_info "Available directories in source:"
+      ls -1 "$source_dir" | sed 's/^/  /'
+      exit 1
     fi
+    
+    # Verify opencode.json(c) exists
+    local found_config=""
+    if [ -f "$source_config_dir/opencode.jsonc" ]; then
+      found_config="opencode.jsonc"
+    elif [ -f "$source_config_dir/opencode.json" ]; then
+      found_config="opencode.json"
+    fi
+    
+    if [ -z "$found_config" ]; then
+      print_error "No opencode.json(c) found in source/$config_path_arg/"
+      exit 1
+    fi
+    
+    # Create symlink or copy based on --copy flag
+    if [ "$use_copy" = true ]; then
+      print_info "Copying config: source/$config_path_arg -> config"
+      cp -r "$source_config_dir" "$wrapper_dir/config"
+      print_success "Config copied successfully"
+      print_info "Config root: config (copy of source/$config_path_arg)"
+    else
+      print_info "Creating symlink: config -> source/$config_path_arg"
+      ln -s "source/$config_path_arg" "$wrapper_dir/config"
+      print_success "Symlink created successfully"
+      print_info "Config root: config (symlink to source/$config_path_arg)"
+    fi
+    
+    # Set paths for metadata
+    rel_config_path="config/$found_config"
+    rel_config_root="config"
+    
+    print_success "Found config at: $rel_config_path"
   else
-    print_info "Using provided installer: $installer_cmd"
-  fi
+    # Original flow: detect or use provided installer
+    if [ -z "$installer_cmd" ]; then
+      print_info "Detecting installer..."
+      installer_cmd=$(detect_installer "$source_dir")
 
-  # Run installer if detected
-  if [ -n "$installer_cmd" ]; then
-    print_info "Running installer..."
-    cd "$source_dir" || exit 1
-
-    # Build installer command with profile and install path
-    local full_installer_cmd="$installer_cmd"
-    
-    # Add profile if provided (as first positional argument)
-    if [ -n "$installer_profile" ]; then
-      full_installer_cmd="$full_installer_cmd $installer_profile"
-      print_info "Using profile: $installer_profile"
-    fi
-    
-    # Add install path as --install-dir flag (absolute path relative to wrapper_dir)
-    local abs_install_path="$wrapper_dir/$install_path"
-    full_installer_cmd="$full_installer_cmd --install-dir \"$abs_install_path\""
-    print_info "Install path: $abs_install_path"
-
-    if eval "$full_installer_cmd"; then
-      print_success "Installer completed successfully"
+      if [ -n "$installer_cmd" ]; then
+        print_success "Detected installer: $installer_cmd"
+      else
+        print_warning "No installer detected"
+      fi
     else
-      print_warning "Installer failed (exit code: $?)"
-      print_info "You may need to run the installer manually"
+      print_info "Using provided installer: $installer_cmd"
     fi
 
-    cd "$REPO_ROOT" || exit 1
-  fi
+    # Run installer if detected
+    if [ -n "$installer_cmd" ]; then
+      print_info "Running installer..."
+      cd "$source_dir" || exit 1
 
-  # Find opencode config file
-  print_info "Detecting OpenCode configuration..."
-  local config_search_dir="$wrapper_dir/$install_path"
-  local config_path=""
-  
-  # First, check if install_path exists and has config
-  if [ -d "$config_search_dir" ]; then
-    config_path=$(find_opencode_config "$config_search_dir" || true)
-    if [ -n "$config_path" ]; then
-      # Make path relative to wrapper_dir
-      config_path="$install_path/$config_path"
-      print_success "Found config at: $config_path"
+      # Build installer command with profile and install path
+      local full_installer_cmd="$installer_cmd"
+      
+      # Add profile if provided (as first positional argument)
+      if [ -n "$installer_profile" ]; then
+        full_installer_cmd="$full_installer_cmd $installer_profile"
+        print_info "Using profile: $installer_profile"
+      fi
+      
+      # Add install path as --install-dir flag (absolute path relative to wrapper_dir)
+      local abs_install_path="$wrapper_dir/$install_path"
+      full_installer_cmd="$full_installer_cmd --install-dir \"$abs_install_path\""
+      print_info "Install path: $abs_install_path"
+
+      if eval "$full_installer_cmd"; then
+        print_success "Installer completed successfully"
+      else
+        print_warning "Installer failed (exit code: $?)"
+        print_info "You may need to run the installer manually"
+      fi
+
+      cd "$REPO_ROOT" || exit 1
     fi
-  fi
-  
-  # Fallback 1: Check source directory if not found in install_path
-  if [ -z "$config_path" ] && [ -d "$source_dir" ]; then
-    print_info "Checking source directory for config..."
-    local source_config=$(find_opencode_config "$source_dir" || true)
-    if [ -n "$source_config" ]; then
-      print_success "Found config in source at: source/$source_config"
-      
-      # Copy config from source to install_path
-      print_info "Copying config to install path..."
-      local source_config_file="$source_dir/$source_config"
-      local target_config_file="$config_search_dir/$(basename "$source_config")"
-      
-      # Create target directory if needed
-      mkdir -p "$(dirname "$target_config_file")"
-      
-      # Copy the config file
-      cp "$source_config_file" "$target_config_file"
-      
-      # Update config_path to point to copied file
-      config_path="$install_path/$(basename "$source_config")"
-      print_success "Copied config to: $config_path"
-    fi
-  fi
-  
-  # Fallback 2: Create default config if still not found
-  if [ -z "$config_path" ]; then
-    print_warning "No opencode.json(c) found in $install_path or source/"
-    config_path="$install_path/opencode.jsonc"
+
+    # Find opencode config file
+    print_info "Detecting OpenCode configuration..."
+    local config_search_dir="$wrapper_dir/$install_path"
+    local config_path=""
     
-    # Create default opencode.jsonc if directory exists
+    # First, check if install_path exists and has config
     if [ -d "$config_search_dir" ]; then
-      print_info "Creating default opencode.jsonc..."
-      cat >"$config_search_dir/opencode.jsonc" <<'EOF'
+      config_path=$(find_opencode_config "$config_search_dir" || true)
+      if [ -n "$config_path" ]; then
+        # Make path relative to wrapper_dir
+        config_path="$install_path/$config_path"
+        print_success "Found config at: $config_path"
+      fi
+    fi
+    
+    # Fallback 1: Check source directory if not found in install_path
+    if [ -z "$config_path" ] && [ -d "$source_dir" ]; then
+      print_info "Checking source directory for config..."
+      local source_config=$(find_opencode_config "$source_dir" || true)
+      if [ -n "$source_config" ]; then
+        print_success "Found config in source at: source/$source_config"
+        
+        # Copy config from source to install_path
+        print_info "Copying config to install path..."
+        local source_config_file="$source_dir/$source_config"
+        local target_config_file="$config_search_dir/$(basename "$source_config")"
+        
+        # Create target directory if needed
+        mkdir -p "$(dirname "$target_config_file")"
+        
+        # Copy the config file
+        cp "$source_config_file" "$target_config_file"
+        
+        # Update config_path to point to copied file
+        config_path="$install_path/$(basename "$source_config")"
+        print_success "Copied config to: $config_path"
+      fi
+    fi
+    
+    # Fallback 2: Create default config if still not found
+    if [ -z "$config_path" ]; then
+      print_warning "No opencode.json(c) found in $install_path or source/"
+      config_path="$install_path/opencode.jsonc"
+      
+      # Create default opencode.jsonc if directory exists
+      if [ -d "$config_search_dir" ]; then
+        print_info "Creating default opencode.jsonc..."
+        cat >"$config_search_dir/opencode.jsonc" <<'EOF'
 {
   "$schema": "https://opencode.ai/config.json",
   "instructions": ["context/**/*.md"],
   "default_agent": "openagent"
 }
 EOF
-      print_success "Created default config at: $config_path"
+        print_success "Created default config at: $config_path"
+      fi
     fi
-  fi
 
-  # Determine config root based on where config was found
-  local config_root=""
-  if [[ "$config_path" == source/* ]]; then
-    # Config is in source directory
-    config_root=$(get_config_root "$config_path")
-    print_info "Config root: $config_root (in source)"
-  else
-    # Config is in install_path
-    config_root=$(get_config_root "$config_path")
-    print_info "Config root: $config_root"
-  fi
+    # Determine config root based on where config was found
+    local config_root=""
+    if [[ "$config_path" == source/* ]]; then
+      # Config is in source directory
+      config_root=$(get_config_root "$config_path")
+      print_info "Config root: $config_root (in source)"
+    else
+      # Config is in install_path
+      config_root=$(get_config_root "$config_path")
+      print_info "Config root: $config_root"
+    fi
 
-  # Paths are already relative to wrapper_dir
-  local rel_config_path="$config_path"
-  local rel_config_root="$config_root"
+    # Paths are already relative to wrapper_dir
+    rel_config_path="$config_path"
+    rel_config_root="$config_root"
+  fi
 
   # Create metadata file
   print_info "Creating metadata file..."
@@ -1831,11 +1891,13 @@ EOF
 
   print_success "Metadata file created"
 
-  # Setup .gitignore for remote config directory
+  # Setup .gitignore for remote config directory (only if not using symlink)
   # This ensures only opencode.json(c) is committed
-  local config_dir_path="$wrapper_dir/$install_path"
-  if [ -d "$config_dir_path" ]; then
-    setup_config_gitignore "$config_dir_path"
+  if [ -z "$config_path_arg" ]; then
+    local config_dir_path="$wrapper_dir/$install_path"
+    if [ -d "$config_dir_path" ]; then
+      setup_config_gitignore "$config_dir_path"
+    fi
   fi
 
   # Show summary
@@ -1844,18 +1906,27 @@ EOF
   printf "  %sName:%s %s\n" "$BLUE" "$NC" "$config_name"
   printf "  %sRepository:%s %s\n" "$BLUE" "$NC" "$repo_url"
   printf "  %sLocation:%s %s\n" "$BLUE" "$NC" "$wrapper_dir"
-  printf "  %sSource Dir:%s %s (submodule, read-only)\n" "$BLUE" "$NC" "$source_dir"
-  printf "  %sInstall Path:%s %s\n" "$BLUE" "$NC" "$install_path"
+  printf "  %sSource Dir:%s %s (submodule)\n" "$BLUE" "$NC" "$source_dir"
+  
+  if [ -n "$config_path_arg" ]; then
+    if [ "$use_copy" = true ]; then
+      printf "  %sMode:%s copy (source/%s -> config)\n" "$BLUE" "$NC" "$config_path_arg"
+    else
+      printf "  %sMode:%s symlink (config -> source/%s)\n" "$BLUE" "$NC" "$config_path_arg"
+    fi
+  else
+    printf "  %sInstall Path:%s %s\n" "$BLUE" "$NC" "$install_path"
+    if [ -n "$installer_cmd" ]; then
+      printf "  %sInstaller:%s %s" "$BLUE" "$NC" "$installer_cmd"
+      if [ -n "$installer_profile" ]; then
+        printf " %s" "$installer_profile"
+      fi
+      printf "\n"
+    fi
+  fi
+  
   printf "  %sConfig Path:%s %s\n" "$BLUE" "$NC" "$rel_config_path"
   printf "  %sConfig Root:%s %s\n" "$BLUE" "$NC" "$rel_config_root"
-
-  if [ -n "$installer_cmd" ]; then
-    printf "  %sInstaller:%s %s" "$BLUE" "$NC" "$installer_cmd"
-    if [ -n "$installer_profile" ]; then
-      printf " %s" "$installer_profile"
-    fi
-    printf " %s\n" "$abs_install_path"
-  fi
 
   echo ""
   print_success "Import completed successfully!"
@@ -2152,12 +2223,18 @@ show_remote_help() {
   printf "  %shelp%s                     Show this help message\n\n" "$GREEN" "$NC"
 
   printf "%sInstall Options:%s\n" "$YELLOW" "$NC"
+  printf "  --config-path <path>       Path to config in source repo (creates symlink by default)\n"
+  printf "  --copy                     Copy config instead of symlink (use with --config-path)\n"
   printf "  --profile <profile>        Profile to pass to installer (e.g., essential, full)\n"
-  printf "  --install-path <path>      Custom installation path (default: config/)\n"
+  printf "  --install-path <path>      Custom installation path for installer (default: config/)\n"
   printf "  --installer <command>      Custom installer command\n\n"
 
   printf "%sExamples:%s\n" "$YELLOW" "$NC"
-  printf "  # Install with auto-detected name\n"
+  printf "  # Install repo with config in subdirectory (symlink, read-only)\n"
+  printf "  opencode-config remote install git@github.com:org/repo.git --config-path config\n\n"
+  printf "  # Install repo with config in subdirectory (copy, editable)\n"
+  printf "  opencode-config remote install git@github.com:org/repo.git --config-path config --copy\n\n"
+  printf "  # Install with auto-detected installer\n"
   printf "  opencode-config remote install https://github.com/darrenhinde/OpenAgentsControl\n\n"
   printf "  # Install with custom name and profile\n"
   printf "  opencode-config remote install https://github.com/user/repo myconfig --profile essential\n\n"

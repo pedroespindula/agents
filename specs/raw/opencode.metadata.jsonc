@@ -1,0 +1,16 @@
+{
+  // Metadata for OpenCode configuration
+  "name": "raw",
+  "description": "OpenCode configuration",
+  "version": "1.0.0",
+  "author": "",
+  "tags": [],
+  "created": "2026-01-29",
+  "updated": "2026-01-29",
+  
+  // Path to OpenCode config file (relative to this directory)
+  "config_path": "config/opencode.jsonc",
+  
+  // Root directory for OpenCode structure (relative to this directory)
+  "config_root": "config"
+}

@@ -1,0 +1,22 @@
+{
+  // Metadata for imported OpenCode configuration
+  "name": "platform-sre-agents",
+  "description": "Imported from git@github.com:corabank/platform-sre-agents",
+  "version": "1.0.0",
+  "author": "",
+  "tags": ["external", "submodule", "imported"],
+  "created": "2026-01-29",
+  "updated": "2026-01-29",
+  
+  // Repository information
+  "repository": {
+    "url": "git@github.com:corabank/platform-sre-agents",
+    "type": "git-submodule"
+  },
+  
+  // Path to OpenCode config file (relative to this directory)
+  "config_path": "config/opencode.jsonc",
+  
+  // Root directory for OpenCode structure (relative to this directory)
+  "config_root": "config"
+}

@@ -9,4 +9,4 @@
 	url = https://github.com/code-yeongyu/oh-my-opencode.git
 [submodule "specs/platform-sre-agents/source"]
 	path = specs/platform-sre-agents/source
-	url = git@github.com:corabank/platform-sre-agents.git
+	url = git@github.com:corabank/platform-sre-agents

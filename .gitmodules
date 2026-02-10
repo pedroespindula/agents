@@ -10,3 +10,6 @@
 [submodule "specs/platform-sre-agents/source"]
 	path = specs/platform-sre-agents/source
 	url = git@github.com:corabank/platform-sre-agents
+[submodule "specs/open-native/source"]
+	path = specs/open-native/source
+	url = git@github.com:open-native/ai-opencode-config

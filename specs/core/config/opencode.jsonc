@@ -1,6 +1,9 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "instructions": ["policies/**/*.md", "instructions/AGENTS.md"],
+  "instructions": [
+    "policies/**/*.md",
+    "instructions/AGENTS.md"
+  ],
   "default_agent": "core",
   // Use um modelo mais barato para tarefas leves como geracao de titulos
   "small_model": "litellm/gemini-2.0-flash-lite",
@@ -11,7 +14,12 @@
   },
   // Ignorar diretorios ruidosos no watcher
   "watcher": {
-    "ignore": ["node_modules/**", "dist/**", ".git/**", "*.log"],
+    "ignore": [
+      "node_modules/**",
+      "dist/**",
+      ".git/**",
+      "*.log"
+    ],
   },
   "agent": {
     // Desabilitar agentes built-in para evitar confusao com Core
@@ -99,7 +107,7 @@
       "url": "https://api.githubcopilot.com/mcp/",
       "enabled": true,
       "headers": {
-        "Authorization": "Bearer {env:GITHUB_PAT_TOKEN}",
+        "Authorization": "Bearer {env:GITHUB_PERSONAL_ACCESS_TOKEN}",
       },
     },
     "outline": {

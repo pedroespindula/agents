@@ -37,3 +37,8 @@ Thumbs.db
 # Temporary files
 *.tmp
 .cache/
+.gitignore
+antigravity-accounts.json
+antigravity-accounts.json.*.tmp
+antigravity-signature-cache.json
+antigravity-logs/

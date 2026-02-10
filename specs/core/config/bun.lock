@@ -5,7 +5,7 @@
     "": {
       "name": "agents-repo",
       "dependencies": {
-        "@opencode-ai/plugin": "1.1.30",
+        "@opencode-ai/plugin": "1.1.40",
       },
       "devDependencies": {
         "@commitlint/cli": "^20.2.0",
@@ -56,9 +56,9 @@
 
     "@commitlint/types": ["@commitlint/types@20.2.0", "", { "dependencies": { "@types/conventional-commits-parser": "^5.0.0", "chalk": "^5.3.0" } }, "sha512-KTy0OqRDLR5y/zZMnizyx09z/rPlPC/zKhYgH8o/q6PuAjoQAKlRfY4zzv0M64yybQ//6//4H1n14pxaLZfUnA=="],
 
-    "@opencode-ai/plugin": ["@opencode-ai/plugin@1.1.30", "", { "dependencies": { "@opencode-ai/sdk": "1.1.30", "zod": "4.1.8" } }, "sha512-xOHVSKMTbH6vjjgDSZUN1V53iC50wfRBkEfVBZmgs7LZtQx1/SzYNFoaQ84feakBO+wcfpoLVVqZHgFqCCsSVw=="],
+    "@opencode-ai/plugin": ["@opencode-ai/plugin@1.1.40", "", { "dependencies": { "@opencode-ai/sdk": "1.1.40", "zod": "4.1.8" } }, "sha512-smzF8sHg/nx1DUAmGqh4pW6tQi/kvQ9l2RsZe6ig+PWxd40vA3PKa59No2Cib9ZvHLSnEfNsmeVuZfYlWDL1lQ=="],
 
-    "@opencode-ai/sdk": ["@opencode-ai/sdk@1.1.30", "", {}, "sha512-toFtWVnc6PCTTYdGQB03W/PYNBZcKpF87il7LTlg8L65Vim7X9rbRk64mM03hf8lU+5Heo6OUhtJV+9VaHYwgA=="],
+    "@opencode-ai/sdk": ["@opencode-ai/sdk@1.1.40", "", {}, "sha512-WBSe7FXsUyAjYiQQQTDjQi/vG3yrfGQTQoJbHd/vQiwsNwEB8uAZ07eviez61QxPaf43cAJR+I2pJQid5aepEQ=="],
 
     "@types/conventional-commits-parser": ["@types/conventional-commits-parser@5.0.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-BgT2szDXnVypgpNxOK8aL5SGjUdaQbC++WZNjF1Qge3Og2+zhHj+RWhmehLhYyvQwqAmvezruVfOf8+3m74W+g=="],
 

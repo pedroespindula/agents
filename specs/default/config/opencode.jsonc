@@ -3,10 +3,10 @@
   "instructions": [
     "instructions/**/*.md"
   ],
-  "mcpServers": {
+  "mcp": {
     "chrome-devtools": {
-      "command": "npx",
-      "args": ["chrome-devtools-mcp@latest"]
+      "type": "local",
+      "command": ["npx", "-y", "chrome-devtools-mcp@latest"]
     }
   }
 }

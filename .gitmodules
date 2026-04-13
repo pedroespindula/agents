@@ -1,15 +1,6 @@
-[submodule "specs/openagents/source"]
-	path = specs/openagents/source
-	url = https://github.com/darrenhinde/OpenAgentsControl.git
-[submodule "specs/openagentscontrol/source"]
-	path = specs/openagentscontrol/source
-	url = https://github.com/darrenhinde/OpenAgentsControl.git
-[submodule "specs/oh-my-opencode/source"]
-	path = specs/oh-my-opencode/source
-	url = https://github.com/code-yeongyu/oh-my-opencode.git
-[submodule "specs/platform-sre-agents/source"]
-	path = specs/platform-sre-agents/source
-	url = git@github.com:corabank/platform-sre-agents
-[submodule "specs/open-native/source"]
-	path = specs/open-native/source
+[submodule "specs/open-native"]
+	path = specs/open-native
 	url = git@github.com:open-native/ai-opencode-config
+[submodule "specs/platform-sre-agents"]
+	path = specs/platform-sre-agents
+	url = git@github.com:corabank/platform-sre-agents

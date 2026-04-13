@@ -195,7 +195,7 @@ cmd_show() {
     echo "  ✗ $CONFIG_PATH (missing)"
   fi
   [ -d "$config_root_dir/agent" ] && echo "  ✓ agent/" || echo "  ✗ agent/ (missing)"
-  [ -d "$config_root_dir/skill" ] && echo "  ✓ skill/" || echo "  ✗ skill/ (missing)"
+  [ -d "$config_root_dir/skills" ] && echo "  ✓ skills/" || echo "  ✗ skills/ (missing)"
   [ -d "$config_root_dir/command" ] && echo "  ✓ command/" || echo "  ✗ command/ (missing)"
 
   if [ -d "$config_root_dir/agent" ]; then
@@ -205,9 +205,9 @@ cmd_show() {
     done
   fi
 
-  if [ -d "$config_root_dir/skill" ]; then
+  if [ -d "$config_root_dir/skills" ]; then
     printf "\n%sSkills:%s\n" "$BLUE" "$NC"
-    find "$config_root_dir/skill" -mindepth 1 -maxdepth 1 -type d | while read -r skill; do
+    find "$config_root_dir/skills" -mindepth 1 -maxdepth 1 -type d | while read -r skill; do
       echo "  • $(basename "$skill")"
     done
   fi
@@ -323,7 +323,7 @@ cmd_create() {
     cp -r "$template_dir" "$config_dir"
   else
     print_info "Creating new configuration '$config_name'..."
-    mkdir -p "$config_dir"/config/{agent,skill,command,instructions}
+    mkdir -p "$config_dir"/config/{agent,skills,command,instructions}
 
     cat >"$config_dir/config/opencode.jsonc" <<'EOF'
 {
@@ -348,7 +348,7 @@ EOF
     echo "  ✓ config/opencode.jsonc"
   fi
   [ -d "$config_dir/config/agent" ] && echo "  ✓ config/agent/"
-  [ -d "$config_dir/config/skill" ] && echo "  ✓ config/skill/"
+  [ -d "$config_dir/config/skills" ] && echo "  ✓ config/skills/"
   [ -d "$config_dir/config/command" ] && echo "  ✓ config/command/"
 
   echo ""

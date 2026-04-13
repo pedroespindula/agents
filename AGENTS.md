@@ -20,14 +20,13 @@ agents/
 │   │   └── config/
 │   │       ├── opencode.jsonc
 │   │       ├── agent/
-│   │       ├── skill/
+│   │       ├── skills/
 │   │       └── command/
 │   ├── default/                 # Local: minimal config
 │   ├── raw/                     # Local: bare-bones config
 │   ├── open-native/             # Remote: git submodule (flattened)
 │   └── platform-sre-agents/     # Remote: git submodule (flattened)
 ├── .gitmodules                  # Declares remote spec submodules
-├── .opencode-env                # Active config env vars (gitignored)
 ├── AGENTS.md                    # This file
 └── README.md                    # User-facing documentation
 ```
@@ -53,13 +52,13 @@ metadata files). Detection uses `.gitmodules` instead of metadata file existence
 | Update remote config | `./bin/opencode-config remote update <name>` |
 | List remote configs | `./bin/opencode-config remote list` |
 | Add agent | `specs/<name>/config/agent/<agent>.md` |
-| Add skill | `specs/<name>/config/skill/<skill>/SKILL.md` |
+| Add skill | `specs/<name>/config/skills/<skill>/SKILL.md` |
 | Add command | `specs/<name>/config/command/<cmd>/COMMAND.md` |
 
 ## CLI Commands
 
 ```bash
-# Initialize configuration (generates .opencode-env)
+# Initialize configuration (creates ~/.agents symlink)
 ./bin/opencode-config init [name]
 
 # List available configurations
@@ -87,16 +86,21 @@ metadata files). Detection uses `.gitmodules` instead of metadata file existence
 ./bin/opencode-config help
 ```
 
-## Environment Variables
+## Configuration
 
-The `.opencode-env` file exports four variables:
+The `~/.agents` symlink points to the active spec's `config/` directory.
+
+Add the following to your shell profile:
+
+```bash
+export OPENCODE_CONFIG="$HOME/.agents/opencode.jsonc"
+export OPENCODE_CONFIG_DIR="$HOME/.agents"
+```
 
 | Variable | Description |
 |----------|-------------|
-| `OPENCODE_AGENTS` | Name of the active configuration |
-| `OPENCODE_CONFIG` | Absolute path to `opencode.jsonc` |
+| `OPENCODE_CONFIG` | Absolute path to `opencode.jsonc` via symlink |
 | `OPENCODE_CONFIG_DIR` | Directory containing agents/, skills/, commands/ |
-| `PATH` | Extended with the spec's `bin/` directory |
 
 `OPENCODE_CONFIG_DIR` tells OpenCode where to find configuration resources.
 It does **not** change the working directory for file operations.
@@ -141,7 +145,7 @@ tools:
 
 ### Skills
 
-Create `config/skill/<name>/SKILL.md` with frontmatter:
+Create `config/skills/<name>/SKILL.md` with frontmatter:
 
 ```yaml
 ---

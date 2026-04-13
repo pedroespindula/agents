@@ -24,7 +24,7 @@ function compileValidator(schema) {
 
 const agentDir = path.resolve('agent');
 const commandDir = path.resolve('command');
-const skillDir = path.resolve('skill');
+const skillDir = path.resolve('skills');
 const opencodeConfigPath = path.resolve('opencode.jsonc');
 
 const skillSchemaPath = path.resolve('schemas/skill.schema.json');
@@ -94,15 +94,15 @@ for (const f of commandFiles) {
 }
 
 // Validate skills
-if (!fs.existsSync(skillDir)) fail('Missing skill/ directory at root');
+if (!fs.existsSync(skillDir)) fail('Missing skills/ directory at root');
 const skillDirs = fs.readdirSync(skillDir).filter((f) => {
   const stat = fs.statSync(path.join(skillDir, f));
   return stat.isDirectory();
 });
-if (skillDirs.length === 0) fail('No skill/*/ directories found');
+if (skillDirs.length === 0) fail('No skills/*/ directories found');
 for (const dir of skillDirs) {
   const skillPath = path.join(skillDir, dir, 'SKILL.md');
-  if (!fs.existsSync(skillPath)) fail(`Missing SKILL.md in skill/${dir}/`);
+  if (!fs.existsSync(skillPath)) fail(`Missing SKILL.md in skills/${dir}/`);
 
   const { frontmatter, body } = parseFrontmatterMd(skillPath);
   if (!frontmatter.name) fail(`Skill ${dir} missing name in frontmatter`);

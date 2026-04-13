@@ -65,8 +65,8 @@ OpenCode configuration can be placed in:
 - **Global agents**: `~/.config/opencode/agent/*.md`
 - **Project commands**: `.opencode/command/*.md`
 - **Global commands**: `~/.config/opencode/command/*.md`
-- **Project skills**: `.opencode/skill/<name>/SKILL.md`
-- **Global skills**: `~/.config/opencode/skill/<name>/SKILL.md`
+- **Project skills**: `.opencode/skills/<name>/SKILL.md`
+- **Global skills**: `~/.config/opencode/skills/<name>/SKILL.md`
 - **Project tools**: `.opencode/tool/*.ts`
 - **Global tools**: `~/.config/opencode/tool/*.ts`
 - **Rules**: `AGENTS.md` (project root or nested directories)

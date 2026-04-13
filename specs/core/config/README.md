@@ -10,7 +10,7 @@ This repository provides a structured setup to use OpenCode as the main engine a
 - `instructions/GEMINI.md` — symlink to `AGENTS.md`
 - `agent/` — file-based agents
 - `command/` — file-based commands
-- `skill/` — skills catalog
+- `skills/` — skills catalog
 - `.github/workflows/ci.yml` — CI to validate symlinks and run checks
 
 ## Symlink Setup

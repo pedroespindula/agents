@@ -79,7 +79,7 @@ npm run opencode:sync-md
 │   ├── engineer.md          # Implementation subagent
 │   ├── tester.md            # Testing subagent
 │   └── sre.md               # SRE subagent
-├── skill/                    # Skill definitions
+├── skills/                   # Skill definitions
 │   └── <skill-name>/SKILL.md
 ├── command/                  # Custom slash commands
 ├── instructions/             # Global shared instructions (cross-project)
@@ -135,7 +135,7 @@ Rules:
 
 ### Creating Skills
 
-1. Create directory `skill/<skill-name>/`
+1. Create directory `skills/<skill-name>/`
 2. Add `SKILL.md` with frontmatter:
    ```yaml
    ---

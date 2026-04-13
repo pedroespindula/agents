@@ -53,15 +53,15 @@ When you need specific guidance, load these files:
 
 ### Standards and Guidelines
 
-- `skill/pr-description/standards.md` - Padroes e boas praticas para descricoes de PR
+- `skills/pr-description/standards.md` - Padroes e boas praticas para descricoes de PR
 
 ### Instructions by Task Type
 
-- `skill/pr-description/instructions/general.md` - Guia completo para criar descricoes efetivas
+- `skills/pr-description/instructions/general.md` - Guia completo para criar descricoes efetivas
 
 ### Templates
 
-- `skill/pr-description/templates/pr-description.md` - Template generico reutilizavel
-- `skill/pr-description/templates/pr-description-detailed.md` - Template detalhado para PRs production-ready
+- `skills/pr-description/templates/pr-description.md` - Template generico reutilizavel
+- `skills/pr-description/templates/pr-description-detailed.md` - Template detalhado para PRs production-ready
 
 Use the Read tool to load the appropriate file based on the task at hand.

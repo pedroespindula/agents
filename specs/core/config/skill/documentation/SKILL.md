@@ -42,18 +42,18 @@ When you need specific guidance, load these files:
 
 ### Standards and Guidelines
 
-- `skill/documentation/standards.md` - Padroes gerais de documentacao
+- `skills/documentation/standards.md` - Padroes gerais de documentacao
 
 ### Instructions by Task Type
 
-- `skill/documentation/instructions/general.md` - Documentacao tecnica geral
-- `skill/documentation/instructions/api-documentation.md` - Documentacao de APIs
-- `skill/documentation/instructions/changelog.md` - Manutencao de changelogs
+- `skills/documentation/instructions/general.md` - Documentacao tecnica geral
+- `skills/documentation/instructions/api-documentation.md` - Documentacao de APIs
+- `skills/documentation/instructions/changelog.md` - Manutencao de changelogs
 
 ### Templates
 
-- `skill/documentation/templates/readme.md` - Template de README
-- `skill/documentation/templates/api-endpoint.md` - Template de endpoint de API
-- `skill/documentation/templates/runbook.md` - Template de runbook operacional
+- `skills/documentation/templates/readme.md` - Template de README
+- `skills/documentation/templates/api-endpoint.md` - Template de endpoint de API
+- `skills/documentation/templates/runbook.md` - Template de runbook operacional
 
 Use the Read tool to load the appropriate file based on the task at hand.

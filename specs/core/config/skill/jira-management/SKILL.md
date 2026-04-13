@@ -47,17 +47,17 @@ When you need specific guidance, load these files:
 
 ### Standards and Guidelines
 
-- `skill/jira-management/standards.md` - Restricoes gerais
-- `skill/jira-management/instructions/issue-types.md` - Tipos de issues padronizados
-- `skill/jira-management/instructions/labels.md` - Sistema de labels (produto, jornada)
+- `skills/jira-management/standards.md` - Restricoes gerais
+- `skills/jira-management/instructions/issue-types.md` - Tipos de issues padronizados
+- `skills/jira-management/instructions/labels.md` - Sistema de labels (produto, jornada)
 
 ### Templates by Card Type
 
-- `skill/jira-management/templates/epic.md` - Template de Epico
-- `skill/jira-management/templates/story.md` - Template de Historia
-- `skill/jira-management/templates/task.md` - Template de Tarefa
-- `skill/jira-management/templates/goal.md` - Template de Meta
-- `skill/jira-management/templates/okr.md` - Template de OKR
-- `skill/jira-management/templates/kr-report.md` - Template de Report de KR
+- `skills/jira-management/templates/epic.md` - Template de Epico
+- `skills/jira-management/templates/story.md` - Template de Historia
+- `skills/jira-management/templates/task.md` - Template de Tarefa
+- `skills/jira-management/templates/goal.md` - Template de Meta
+- `skills/jira-management/templates/okr.md` - Template de OKR
+- `skills/jira-management/templates/kr-report.md` - Template de Report de KR
 
 Use the Read tool to load the appropriate file based on the task at hand.

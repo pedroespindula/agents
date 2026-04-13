@@ -41,18 +41,18 @@ When you need specific guidance, load these files:
 
 ### Standards and Guidelines
 
-- `skill/communication/standards.md` - Padroes gerais de comunicacao
+- `skills/communication/standards.md` - Padroes gerais de comunicacao
 
 ### Instructions by Task Type
 
-- `skill/communication/instructions/slack-notification.md` - Notificacoes via Slack
-- `skill/communication/instructions/email-communication.md` - Comunicacao por email
-- `skill/communication/instructions/stakeholder-update.md` - Atualizacoes para stakeholders
+- `skills/communication/instructions/slack-notification.md` - Notificacoes via Slack
+- `skills/communication/instructions/email-communication.md` - Comunicacao por email
+- `skills/communication/instructions/stakeholder-update.md` - Atualizacoes para stakeholders
 
 ### Templates
 
-- `skill/communication/templates/slack-message.md` - Templates de mensagens Slack
-- `skill/communication/templates/email.md` - Templates de email
-- `skill/communication/templates/status-update.md` - Templates de atualizacao de status
+- `skills/communication/templates/slack-message.md` - Templates de mensagens Slack
+- `skills/communication/templates/email.md` - Templates de email
+- `skills/communication/templates/status-update.md` - Templates de atualizacao de status
 
 Use the Read tool to load the appropriate file based on the task at hand.
